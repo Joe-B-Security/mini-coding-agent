@@ -5,8 +5,8 @@ This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent
 
 The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing for structural code understanding, and a secure factory pattern that locks workspace boundaries at tool creation time. Tested against the Flask codebase with qwen3.5-9b.
 
-**[Part 1: Improving How the Agent Reads Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1.md)**
-**[Part 1.5: Securing Code Reading](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1.5.md)**
+**[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
+**[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
 
 ### Part 1: Code understanding tools
 
