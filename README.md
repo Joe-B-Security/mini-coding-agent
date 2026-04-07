@@ -1,13 +1,14 @@
 &nbsp;
 # Mini-Coding-Agent
 
-This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent) with improvements to how the agent reads code.
+This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent) with improvements to how the agent reads and secures code.
 
-The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing so the agent can search by definitions and references, see file structure, read functions by name, and discover which files are related. Tested against the Flask codebase with qwen3.5-9b.
+The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing for structural code understanding, and a secure factory pattern that locks workspace boundaries at tool creation time. Tested against the Flask codebase with qwen3.5-9b.
 
-**[Blog post: Improving a Coding Agent Harness, Part 1](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1.md)**
+**[Part 1: Improving How the Agent Reads Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1.md)**
+**[Part 1.5: Securing Code Reading](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1.5.md)**
 
-### What was added
+### Part 1: Code understanding tools
 
 | Tool | What it does |
 |------|-------------|
@@ -18,6 +19,12 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 | `related_files` | Find files connected to a given file by shared symbols |
 
 All five tools are in `code_intel.py` and wired into the agent in `mini_coding_agent.py`. Also adds `--backend openai` for use with any OpenAI-compatible endpoint (vLLM, llama.cpp, etc).
+
+### Part 1.5: Secure factory pattern
+
+The `SecureToolFactory` manufactures code reading tools locked to the workspace root (`--cwd`). The root is resolved and frozen at creation time. Every tool the factory produces validates paths against that root before reading anything. Path traversal (`../`), symlink escapes, and absolute paths outside the workspace are all blocked. Files outside the root are not just denied, they are invisible to the model.
+
+Implementation is in `secure_tools.py` (~120 lines).
 
 ### Run it
 
@@ -34,7 +41,7 @@ uv run python mini_coding_agent.py \
 ### Tests
 
 ```bash
-uv run python -m pytest tests/ -v   # 50 tests, no model needed
+uv run python -m pytest tests/ -v   # 70 tests, no model needed
 ```
 
 ---

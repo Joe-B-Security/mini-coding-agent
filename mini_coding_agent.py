@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from code_intel import find_definitions, find_references, find_related_files, chunk_file, read_symbol
+from secure_tools import SecureToolFactory
 
 
 DOC_NAMES = ("AGENTS.md", "README.md", "pyproject.toml", "package.json")
@@ -287,6 +288,7 @@ class MiniAgent:
         self.model_client = model_client
         self.workspace = workspace
         self.root = Path(workspace.repo_root)
+        self.secure = SecureToolFactory(self.root)
         self.session_store = session_store
         self.approval_policy = approval_policy
         self.max_steps = max_steps
@@ -924,10 +926,9 @@ class MiniAgent:
         return output
 
     def tool_find_defs(self, args):
-        """Find symbol definitions using tree-sitter AST parsing."""
         symbol = str(args.get("symbol", "")).strip()
-        path = self.path(args.get("path", "."))
-        results = find_definitions(symbol, path)
+        path = args.get("path", ".")
+        results = self.secure.secure_find_defs(symbol, path)
         if not results:
             return f"(no definitions found for '{symbol}')"
         lines = [f"Found {len(results)} definition(s) for '{symbol}':"]
@@ -940,10 +941,9 @@ class MiniAgent:
         return "\n".join(lines)
 
     def tool_find_refs(self, args):
-        """Find symbol references using tree-sitter AST parsing."""
         symbol = str(args.get("symbol", "")).strip()
-        path = self.path(args.get("path", "."))
-        results = find_references(symbol, path)
+        path = args.get("path", ".")
+        results = self.secure.secure_find_refs(symbol, path)
         if not results:
             return f"(no references found for '{symbol}')"
         lines = [f"Found {len(results)} reference(s) to '{symbol}':"]
@@ -956,12 +956,11 @@ class MiniAgent:
         return "\n".join(lines)
 
     def tool_related_files(self, args):
-        """Find files that share symbols with the given file."""
-        path = self.path(args["path"])
-        results = find_related_files(path, self.root)
+        path_str = args["path"]
+        results = self.secure.secure_related_files(path_str)
         if not results:
-            return f"(no related files found for {path.relative_to(self.root)})"
-        lines = [f"Files related to {path.relative_to(self.root)} (by shared symbols):"]
+            return f"(no related files found for {path_str})"
+        lines = [f"Files related to {path_str} (by shared symbols):"]
         for rf in results[:15]:
             try:
                 rel = Path(rf.file).relative_to(self.root)
@@ -972,24 +971,13 @@ class MiniAgent:
         return "\n".join(lines)
 
     def tool_file_outline(self, args):
-        """Show the structural outline of a file using AST parsing."""
-        path = self.path(args["path"])
-        chunks = chunk_file(str(path))
-        if not chunks:
-            return f"(could not parse structure of {path.relative_to(self.root)})"
-        lines = [f"Structure of {path.relative_to(self.root)}:"]
-        for c in chunks:
-            lines.append(f"  L{c.start_line}-{c.end_line} [{c.kind}] {c.name}")
-        return "\n".join(lines)
+        path_str = args["path"]
+        return self.secure.secure_file_outline(path_str)
 
     def tool_read_symbol(self, args):
-        """Read a specific function or class by name using AST parsing."""
-        path = self.path(args["path"])
+        path_str = args["path"]
         symbol = str(args["symbol"]).strip()
-        result = read_symbol(str(path), symbol)
-        if result is None:
-            return f"(symbol '{symbol}' not found in {path.relative_to(self.root)})"
-        return result
+        return self.secure.secure_read_symbol(path_str, symbol)
 
     def tool_run_shell(self, args):
         command = str(args.get("command", "")).strip()

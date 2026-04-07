@@ -358,6 +358,19 @@ def test_related_files_tool(tmp_path):
     assert "User" in result
 
 
+# ---------------------------------------------------------------------------
+# Security: secure factory integrated into agent
+# ---------------------------------------------------------------------------
+
+
+def test_find_defs_via_secure_factory(tmp_path):
+    (tmp_path / "app.py").write_text("class Config:\n    host = 'localhost'\n")
+    agent = build_agent(tmp_path, [])
+    result = agent.run_tool("find_defs", {"symbol": "Config"})
+    assert "1 definition" in result
+    assert "app.py:1" in result
+
+
 def test_ollama_client_posts_expected_payload():
     captured = {}
 
