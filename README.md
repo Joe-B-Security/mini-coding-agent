@@ -8,7 +8,7 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 **[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
 **[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
 
-### Part 1: Code understanding tools
+### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
 | Tool | What it does |
 |------|-------------|
@@ -20,7 +20,7 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 
 All five tools are in `code_intel.py` and wired into the agent in `mini_coding_agent.py`. Also adds `--backend openai` for use with any OpenAI-compatible endpoint (vLLM, llama.cpp, etc).
 
-### Part 1.5: Secure factory pattern
+### Part 1.5: Secure factory pattern ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/))
 
 The `SecureToolFactory` manufactures code reading tools locked to the workspace root (`--cwd`). The root is resolved and frozen at creation time. Every tool the factory produces validates paths against that root before reading anything. Path traversal (`../`), symlink escapes, and absolute paths outside the workspace are all blocked. Files outside the root are not just denied, they are invisible to the model.
 
