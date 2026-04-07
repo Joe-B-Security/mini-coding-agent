@@ -9,6 +9,8 @@ description = "Minimal standalone coding agent backed by Ollama"
 requires-python = ">=3.10"
 dependencies = [
     "pytest>=9.0.2",
+    "tree-sitter==0.21.3",
+    "tree-sitter-languages>=1.10",
 ]
 
 [project.scripts]
@@ -21,4 +23,4 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["mini_coding_agent"]
+py-modules = ["mini_coding_agent", "code_intel"]

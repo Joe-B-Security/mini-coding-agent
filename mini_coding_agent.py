@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from code_intel import find_definitions, find_references, find_related_files, chunk_file, read_symbol
+
 
 DOC_NAMES = ("AGENTS.md", "README.md", "pyproject.toml", "package.json")
 HELP_TEXT = "/help, /memory, /session, /reset, /exit"
@@ -345,6 +347,36 @@ class MiniAgent:
                 "description": "Search the workspace with rg or a simple fallback.",
                 "run": self.tool_search,
             },
+            "find_defs": {
+                "schema": {"symbol": "str", "path": "str='.'"},
+                "risky": False,
+                "description": "Find where a symbol (function, class) is defined using AST analysis. More precise than search.",
+                "run": self.tool_find_defs,
+            },
+            "find_refs": {
+                "schema": {"symbol": "str", "path": "str='.'"},
+                "risky": False,
+                "description": "Find all references to a symbol across the codebase using AST analysis.",
+                "run": self.tool_find_refs,
+            },
+            "related_files": {
+                "schema": {"path": "str"},
+                "risky": False,
+                "description": "Find files most related to a given file based on shared symbols.",
+                "run": self.tool_related_files,
+            },
+            "file_outline": {
+                "schema": {"path": "str"},
+                "risky": False,
+                "description": "Show the structure of a file: its functions, classes, and imports with line ranges.",
+                "run": self.tool_file_outline,
+            },
+            "read_symbol": {
+                "schema": {"path": "str", "symbol": "str"},
+                "risky": False,
+                "description": "Read a specific function or class from a file by name. More precise than read_file with line ranges.",
+                "run": self.tool_read_symbol,
+            },
             "run_shell": {
                 "schema": {"command": "str", "timeout": "int=20"},
                 "risky": True,
@@ -387,6 +419,10 @@ class MiniAgent:
             [
                 '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
                 '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
+                '<tool>{"name":"find_defs","args":{"symbol":"Config","path":"."}}</tool>',
+                '<tool>{"name":"find_refs","args":{"symbol":"Config","path":"."}}</tool>',
+                '<tool>{"name":"file_outline","args":{"path":"app.py"}}</tool>',
+                '<tool>{"name":"read_symbol","args":{"path":"app.py","symbol":"main"}}</tool>',
                 '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
                 '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
                 '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
@@ -412,6 +448,9 @@ class MiniAgent:
             - Before writing tests for existing code, read the implementation first.
             - When writing tests, match the current implementation unless the user explicitly asked you to change the code.
             - New files should be complete and runnable, including obvious imports.
+            - Prefer find_defs/find_refs over search when looking for where a symbol is defined or used.
+            - Use file_outline to understand a file's structure before reading it. Use read_symbol to read specific functions or classes by name instead of guessing line ranges.
+            - Use related_files to discover which files are connected to the one you are working on.
             - Do not repeat the same tool call with the same arguments if it did not help. Choose a different tool or return a final answer.
             - Required tool arguments must not be empty. Do not call read_file, write_file, patch_file, run_shell, or delegate with args={{}}.
 
@@ -586,6 +625,11 @@ class MiniAgent:
             "list_files": '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
             "read_file": '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
             "search": '<tool>{"name":"search","args":{"pattern":"binary_search","path":"."}}</tool>',
+            "find_defs": '<tool>{"name":"find_defs","args":{"symbol":"Config","path":"."}}</tool>',
+            "find_refs": '<tool>{"name":"find_refs","args":{"symbol":"Config","path":"."}}</tool>',
+            "related_files": '<tool>{"name":"related_files","args":{"path":"app.py"}}</tool>',
+            "file_outline": '<tool>{"name":"file_outline","args":{"path":"app.py"}}</tool>',
+            "read_symbol": '<tool>{"name":"read_symbol","args":{"path":"app.py","symbol":"build_tools"}}</tool>',
             "run_shell": '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
             "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
             "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
@@ -617,6 +661,28 @@ class MiniAgent:
             if not pattern:
                 raise ValueError("pattern must not be empty")
             self.path(args.get("path", "."))
+            return
+
+        if name in ("find_defs", "find_refs"):
+            symbol = str(args.get("symbol", "")).strip()
+            if not symbol:
+                raise ValueError("symbol must not be empty")
+            self.path(args.get("path", "."))
+            return
+
+        if name in ("related_files", "file_outline"):
+            path = self.path(args.get("path", ""))
+            if not path.is_file():
+                raise ValueError("path must be a file")
+            return
+
+        if name == "read_symbol":
+            path = self.path(args.get("path", ""))
+            if not path.is_file():
+                raise ValueError("path must be a file")
+            symbol = str(args.get("symbol", "")).strip()
+            if not symbol:
+                raise ValueError("symbol must not be empty")
             return
 
         if name == "run_shell":
@@ -838,20 +904,92 @@ class MiniAgent:
                 capture_output=True,
                 text=True,
             )
-            return result.stdout.strip() or result.stderr.strip() or "(no matches)"
+            output = result.stdout.strip() or result.stderr.strip() or "(no matches)"
+        else:
+            matches = []
+            files = [path] if path.is_file() else [
+                item for item in path.rglob("*")
+                if item.is_file() and not any(part in IGNORED_PATH_NAMES for part in item.relative_to(self.root).parts)
+            ]
+            for file_path in files:
+                for number, line in enumerate(file_path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+                    if pattern.lower() in line.lower():
+                        matches.append(f"{file_path.relative_to(self.root)}:{number}:{line}")
+                        if len(matches) >= 200:
+                            break
+                if len(matches) >= 200:
+                    break
+            output = "\n".join(matches) or "(no matches)"
 
-        matches = []
-        files = [path] if path.is_file() else [
-            item for item in path.rglob("*")
-            if item.is_file() and not any(part in IGNORED_PATH_NAMES for part in item.relative_to(self.root).parts)
-        ]
-        for file_path in files:
-            for number, line in enumerate(file_path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-                if pattern.lower() in line.lower():
-                    matches.append(f"{file_path.relative_to(self.root)}:{number}:{line}")
-                    if len(matches) >= 200:
-                        return "\n".join(matches)
-        return "\n".join(matches) or "(no matches)"
+        return output
+
+    def tool_find_defs(self, args):
+        """Find symbol definitions using tree-sitter AST parsing."""
+        symbol = str(args.get("symbol", "")).strip()
+        path = self.path(args.get("path", "."))
+        results = find_definitions(symbol, path)
+        if not results:
+            return f"(no definitions found for '{symbol}')"
+        lines = [f"Found {len(results)} definition(s) for '{symbol}':"]
+        for sym in results:
+            try:
+                rel = Path(sym.file).relative_to(self.root)
+            except ValueError:
+                rel = sym.file
+            lines.append(f"  {rel}:{sym.line}")
+        return "\n".join(lines)
+
+    def tool_find_refs(self, args):
+        """Find symbol references using tree-sitter AST parsing."""
+        symbol = str(args.get("symbol", "")).strip()
+        path = self.path(args.get("path", "."))
+        results = find_references(symbol, path)
+        if not results:
+            return f"(no references found for '{symbol}')"
+        lines = [f"Found {len(results)} reference(s) to '{symbol}':"]
+        for sym in results:
+            try:
+                rel = Path(sym.file).relative_to(self.root)
+            except ValueError:
+                rel = sym.file
+            lines.append(f"  {rel}:{sym.line}")
+        return "\n".join(lines)
+
+    def tool_related_files(self, args):
+        """Find files that share symbols with the given file."""
+        path = self.path(args["path"])
+        results = find_related_files(path, self.root)
+        if not results:
+            return f"(no related files found for {path.relative_to(self.root)})"
+        lines = [f"Files related to {path.relative_to(self.root)} (by shared symbols):"]
+        for rf in results[:15]:
+            try:
+                rel = Path(rf.file).relative_to(self.root)
+            except ValueError:
+                rel = rf.file
+            samples = ", ".join(rf.sample_symbols[:3])
+            lines.append(f"  {rel} ({rf.shared_symbols} shared: {samples})")
+        return "\n".join(lines)
+
+    def tool_file_outline(self, args):
+        """Show the structural outline of a file using AST parsing."""
+        path = self.path(args["path"])
+        chunks = chunk_file(str(path))
+        if not chunks:
+            return f"(could not parse structure of {path.relative_to(self.root)})"
+        lines = [f"Structure of {path.relative_to(self.root)}:"]
+        for c in chunks:
+            lines.append(f"  L{c.start_line}-{c.end_line} [{c.kind}] {c.name}")
+        return "\n".join(lines)
+
+    def tool_read_symbol(self, args):
+        """Read a specific function or class by name using AST parsing."""
+        path = self.path(args["path"])
+        symbol = str(args["symbol"]).strip()
+        result = read_symbol(str(path), symbol)
+        if result is None:
+            return f"(symbol '{symbol}' not found in {path.relative_to(self.root)})"
+        return result
 
     def tool_run_shell(self, args):
         command = str(args.get("command", "")).strip()

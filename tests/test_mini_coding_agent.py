@@ -317,6 +317,47 @@ def test_history_text_deduplicates_unchanged_repeated_reads(tmp_path):
     assert history.count("stable") == 1
 
 
+# ---------------------------------------------------------------------------
+# Code intel tools wired into the agent
+# ---------------------------------------------------------------------------
+
+
+def test_find_defs_tool(tmp_path):
+    (tmp_path / "app.py").write_text("class Config:\n    host = 'localhost'\n")
+    agent = build_agent(tmp_path, [])
+    result = agent.run_tool("find_defs", {"symbol": "Config"})
+    assert "1 definition" in result
+    assert "app.py:1" in result
+
+
+def test_file_outline_tool(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "import os\n\nclass Foo:\n    pass\n\ndef bar():\n    pass\n"
+    )
+    agent = build_agent(tmp_path, [])
+    result = agent.run_tool("file_outline", {"path": "app.py"})
+    assert "imports" in result
+    assert "class Foo" in result
+    assert "def bar" in result
+
+
+def test_read_symbol_tool(tmp_path):
+    (tmp_path / "app.py").write_text("def hello():\n    return 'world'\n\ndef goodbye():\n    return 'bye'\n")
+    agent = build_agent(tmp_path, [])
+    result = agent.run_tool("read_symbol", {"path": "app.py", "symbol": "hello"})
+    assert "world" in result
+    assert "bye" not in result  # only the requested function
+
+
+def test_related_files_tool(tmp_path):
+    (tmp_path / "models.py").write_text("class User:\n    name: str\n")
+    (tmp_path / "views.py").write_text("from models import User\ndef show():\n    return User()\n")
+    agent = build_agent(tmp_path, [])
+    result = agent.run_tool("related_files", {"path": "models.py"})
+    assert "views.py" in result
+    assert "User" in result
+
+
 def test_ollama_client_posts_expected_payload():
     captured = {}
 

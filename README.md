@@ -1,6 +1,46 @@
 &nbsp;
 # Mini-Coding-Agent
 
+This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent) with improvements to how the agent reads code.
+
+The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing so the agent can search by definitions and references, see file structure, read functions by name, and discover which files are related. Tested against the Flask codebase with qwen3.5-9b.
+
+**[Blog post: Improving a Coding Agent Harness, Part 1](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1.md)**
+
+### What was added
+
+| Tool | What it does |
+|------|-------------|
+| `find_defs` | Find where a symbol is defined (AST, not grep) |
+| `find_refs` | Find where a symbol is referenced |
+| `file_outline` | Show a file's structure: functions, classes, imports with line ranges |
+| `read_symbol` | Read a specific function or class by name |
+| `related_files` | Find files connected to a given file by shared symbols |
+
+All five tools are in `code_intel.py` and wired into the agent in `mini_coding_agent.py`. Also adds `--backend openai` for use with any OpenAI-compatible endpoint (vLLM, llama.cpp, etc).
+
+### Run it
+
+```bash
+uv sync
+uv run python mini_coding_agent.py \
+    --backend openai \
+    --host http://127.0.0.1:4444 \
+    --model qwen/qwen3.5-9b \
+    --approval auto \
+    --cwd /path/to/a/python/project
+```
+
+### Tests
+
+```bash
+uv run python -m pytest tests/ -v   # 50 tests, no model needed
+```
+
+---
+
+## Original README
+
 This folder contains a small standalone coding agent:
 
 - code: `mini_coding_agent.py`
