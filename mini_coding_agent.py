@@ -225,6 +225,49 @@ class OllamaModelClient:
         return data.get("response", "")
 
 
+class OpenAIModelClient:
+    """Client for any OpenAI-compatible endpoint (vLLM, llama.cpp, etc)."""
+
+    def __init__(self, model, host, temperature, top_p, timeout):
+        self.model = model
+        self.host = host.rstrip("/")
+        self.temperature = temperature
+        self.top_p = top_p
+        self.timeout = timeout
+
+    def complete(self, prompt, max_new_tokens):
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_new_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "stream": False,
+        }
+        request = urllib.request.Request(
+            self.host + "/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"OpenAI-compatible request failed with HTTP {exc.code}: {body}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Could not reach server at {self.host}\n"
+                f"Model: {self.model}"
+            ) from exc
+
+        choices = data.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"No choices in response: {data}")
+        return choices[0].get("message", {}).get("content", "")
+
+
 class MiniAgent:
     def __init__(
         self,
@@ -929,7 +972,8 @@ def build_welcome(agent, model, host):
 def build_agent(args):
     workspace = WorkspaceContext.build(args.cwd)
     store = SessionStore(Path(workspace.repo_root) / ".mini-coding-agent" / "sessions")
-    model = OllamaModelClient(
+    ClientClass = OpenAIModelClient if args.backend == "openai" else OllamaModelClient
+    model = ClientClass(
         model=args.model,
         host=args.host,
         temperature=args.temperature,
@@ -966,9 +1010,11 @@ def build_arg_parser():
     )
     parser.add_argument("prompt", nargs="*", help="Optional one-shot prompt.")
     parser.add_argument("--cwd", default=".", help="Workspace directory.")
-    parser.add_argument("--model", default="qwen3.5:4b", help="Ollama model name.")
-    parser.add_argument("--host", default="http://127.0.0.1:11434", help="Ollama server URL.")
-    parser.add_argument("--ollama-timeout", type=int, default=300, help="Ollama request timeout in seconds.")
+    parser.add_argument("--model", default="qwen3.5:4b", help="Model name.")
+    parser.add_argument("--host", default="http://127.0.0.1:11434", help="Server URL.")
+    parser.add_argument("--backend", choices=("ollama", "openai"), default="ollama",
+                        help="API backend: 'ollama' for /api/generate, 'openai' for /v1/chat/completions.")
+    parser.add_argument("--ollama-timeout", type=int, default=300, help="Request timeout in seconds.")
     parser.add_argument("--resume", default=None, help="Session id to resume or 'latest'.")
     parser.add_argument(
         "--approval",
