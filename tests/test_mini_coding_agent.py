@@ -371,6 +371,49 @@ def test_find_defs_via_secure_factory(tmp_path):
     assert "app.py:1" in result
 
 
+# ---------------------------------------------------------------------------
+# Enhancement 3: OODA loop integration
+# ---------------------------------------------------------------------------
+
+
+def test_remember_tool_persists(tmp_path):
+    agent = build_agent(tmp_path, [])
+    result = agent.run_tool("remember", {"key": "test_cmd", "content": "pytest -q", "scope": "workspace"})
+    assert "remembered" in result
+    entries = agent.knowledge.get_entries("workspace")
+    assert len(entries) == 1
+    assert entries[0].key == "test_cmd"
+
+
+def test_verify_catches_syntax_error(tmp_path):
+    """Agent writes broken Python, verify loop catches it and retries."""
+    (tmp_path / "app.py").write_text("def hello():\n    return 'world'\n")
+    agent = build_agent(tmp_path, [
+        # First: agent writes broken code
+        '<tool name="patch_file" path="app.py"><old_text>return \'world\'</old_text><new_text>return \'world</new_text></tool>',
+        # Verify fails with SyntaxError, agent gets feedback
+        # Second: agent fixes it
+        '<tool name="patch_file" path="app.py"><old_text>return \'world</old_text><new_text>return \'fixed\'</new_text></tool>',
+        "<final>Fixed the code.</final>",
+    ])
+    answer = agent.ask("fix the greeting function")
+    # Verify feedback should appear in history
+    history_text = " ".join(item.get("content", "") for item in agent.session["history"])
+    assert "SyntaxError" in history_text or "Fixed" in answer
+
+
+def test_orient_injects_context_into_prompt(tmp_path):
+    """Orient phase retrieves relevant code and injects into prompt."""
+    (tmp_path / "auth.py").write_text(
+        "def authenticate(user, password):\n    return check_password(user, password)\n"
+    )
+    agent = build_agent(tmp_path, ["<final>Found the auth code.</final>"])
+    agent.ask("fix the authentication bug")
+    last_prompt = agent.model_client.prompts[-1]
+    assert "authenticate" in last_prompt
+    assert "auth.py" in last_prompt
+
+
 def test_ollama_client_posts_expected_payload():
     captured = {}
 

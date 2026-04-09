@@ -14,6 +14,11 @@ from pathlib import Path
 from code_intel import find_definitions, find_references, find_related_files, chunk_file, read_symbol
 from secure_tools import SecureToolFactory
 
+# --- Enhancement 3: OODA loop for structured code writing ---
+from knowledge import KnowledgeStore
+from ooda import observe, orient, decide, verify
+from rules import build_engine
+
 
 DOC_NAMES = ("AGENTS.md", "README.md", "pyproject.toml", "package.json")
 HELP_TEXT = "/help, /memory, /session, /reset, /exit"
@@ -284,6 +289,7 @@ class MiniAgent:
         depth=0,
         max_depth=1,
         read_only=False,
+        ooda=True,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -303,6 +309,18 @@ class MiniAgent:
             "history": [],
             "memory": {"task": "", "files": [], "notes": []},
         }
+        # --- Enhancement 3: OODA knowledge store and rule engine ---
+        self.ooda = ooda
+        self.modified_files: list[str] = []
+        if self.ooda:
+            self.knowledge = KnowledgeStore(self.root)
+            self.knowledge.load()
+            self.knowledge.index_workspace()
+            self.rules = build_engine(self.root)
+        else:
+            self.knowledge = None
+            self.rules = None
+        # ---
         self.tools = self.build_tools()
         self.prefix = self.build_prefix()
         self.session_path = self.session_store.save(self.session)
@@ -398,6 +416,15 @@ class MiniAgent:
                 "run": self.tool_patch_file,
             },
         }
+        # --- Enhancement 3: remember tool ---
+        if self.ooda:
+            tools["remember"] = {
+                "schema": {"key": "str", "content": "str", "scope": "str='workspace'"},
+                "risky": False,
+                "description": "Save a learning for future sessions. scope: 'workspace' or 'global'.",
+                "run": self.tool_remember,
+            }
+        # ---
         if self.depth < self.max_depth:
             tools["delegate"] = {
                 "schema": {"task": "str", "max_steps": "int=3"},
@@ -513,18 +540,25 @@ class MiniAgent:
     ########################################################
     #### 2) Prompt Shape And Cache Reuse (Continued) #######
     ########################################################
-    def prompt(self, user_message):
+    def prompt(self, user_message, code_context="", knowledge_context=""):
+        # --- Enhancement 3: inject orient context and knowledge ---
+        code_block = f"\n{code_context}\n" if code_context else ""
+        if knowledge_context:
+            user_block = f"{user_message}\n\n{knowledge_context}"
+        else:
+            user_block = user_message
+        # ---
         return textwrap.dedent(
             f"""\
             {self.prefix}
 
             {self.memory_text()}
-
+            {code_block}
             Transcript:
             {self.history_text()}
 
             Current user request:
-            {user_message}
+            {user_block}
             """
         ).strip()
 
@@ -549,20 +583,51 @@ class MiniAgent:
             memory["task"] = clip(user_message.strip(), 300)
         self.record({"role": "user", "content": user_message, "created_at": now()})
 
+        # --- Enhancement 3: OODA Observe + Orient + Decide ---
+        self.modified_files = []
+        verify_attempts = 0
+        if self.ooda:
+            observation = observe(user_message, self.session)
+            code_context, knowledge_context = orient(observation, self.knowledge)
+            decision = decide(self.rules)
+            if self.rules.trace or self.rules.store.trace:
+                print(self.rules.format_trace(), file=sys.stderr)
+        else:
+            code_context = ""
+            knowledge_context = ""
+            decision = None
+        # ---
+
         tool_steps = 0
         attempts = 0
         max_attempts = max(self.max_steps * 3, self.max_steps + 4)
 
         while tool_steps < self.max_steps and attempts < max_attempts:
             attempts += 1
-            raw = self.model_client.complete(self.prompt(user_message), self.max_new_tokens)
+            raw = self.model_client.complete(self.prompt(user_message, code_context, knowledge_context), self.max_new_tokens)
             kind, payload = self.parse(raw)
 
             if kind == "tool":
                 tool_steps += 1
                 name = payload.get("name", "")
                 args = payload.get("args", {})
+
+                # --- Enhancement 3: track modifications for verify ---
                 result = self.run_tool(name, args)
+                if self.ooda and name in ("write_file", "patch_file") and not result.startswith("error"):
+                    rel_path = str(args.get("path", ""))
+                    if rel_path and rel_path not in self.modified_files:
+                        self.modified_files.append(rel_path)
+                        old_trace_len = len(self.rules.trace)
+                        self.rules.store.assert_fact("file_modified", rel_path)
+                        self.rules.derive()
+                        decision.verify_gates = [f[1] for f in self.rules.store.query("verify_gate")]
+                        for entry in self.rules.trace[old_trace_len:]:
+                            print(f"  [rules] {entry}", file=sys.stderr)
+                        for entry in self.rules.store.trace[-1:]:
+                            print(f"  [facts] {entry}", file=sys.stderr)
+                # ---
+
                 self.record(
                     {
                         "role": "tool",
@@ -580,6 +645,16 @@ class MiniAgent:
                 continue
 
             final = (payload or raw).strip()
+
+            # --- Enhancement 3: OODA Verify ---
+            if decision and decision.verify_gates and self.modified_files and verify_attempts < 2:
+                verification = verify(decision.verify_gates, self.root, self.modified_files)
+                if not verification.passed:
+                    verify_attempts += 1
+                    self.record({"role": "assistant", "content": verification.feedback, "created_at": now()})
+                    continue
+            # ---
+
             self.record({"role": "assistant", "content": final, "created_at": now()})
             self.remember(memory["notes"], clip(final, 220), 5)
             return final
@@ -635,6 +710,7 @@ class MiniAgent:
             "run_shell": '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
             "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
             "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
+            "remember": '<tool>{"name":"remember","args":{"key":"test_cmd","content":"pytest --no-header -q","scope":"workspace"}}</tool>',
             "delegate": '<tool>{"name":"delegate","args":{"task":"inspect README.md","max_steps":3}}</tool>',
         }
         return examples.get(name, "")
@@ -717,6 +793,18 @@ class MiniAgent:
             count = text.count(old_text)
             if count != 1:
                 raise ValueError(f"old_text must occur exactly once, found {count}")
+            return
+
+        if name == "remember":
+            key = str(args.get("key", "")).strip()
+            if not key:
+                raise ValueError("key must not be empty")
+            content = str(args.get("content", "")).strip()
+            if not content:
+                raise ValueError("content must not be empty")
+            scope = str(args.get("scope", "workspace")).strip()
+            if scope not in ("workspace", "global"):
+                raise ValueError("scope must be 'workspace' or 'global'")
             return
 
         if name == "delegate":
@@ -1027,6 +1115,21 @@ class MiniAgent:
         path.write_text(text.replace(old_text, str(args["new_text"]), 1), encoding="utf-8")
         return f"patched {path.relative_to(self.root)}"
 
+    # --- Enhancement 3: remember tool ---
+    def tool_remember(self, args):
+        key = str(args.get("key", "")).strip()
+        if not key:
+            raise ValueError("key must not be empty")
+        content = str(args.get("content", "")).strip()
+        if not content:
+            raise ValueError("content must not be empty")
+        scope = str(args.get("scope", "workspace")).strip()
+        if scope not in ("workspace", "global"):
+            raise ValueError("scope must be 'workspace' or 'global'")
+        self.knowledge.learn(key, content, scope=scope)
+        return f"remembered '{key}' ({scope})"
+    # ---
+
     ###################################################
     #### 6) Delegation And Bounded Subagents ##########
     ###################################################
@@ -1109,6 +1212,7 @@ def build_agent(args):
     session_id = args.resume
     if session_id == "latest":
         session_id = store.latest()
+    ooda = not getattr(args, "no_ooda", False)
     if session_id:
         return MiniAgent.from_session(
             model_client=model,
@@ -1118,6 +1222,7 @@ def build_agent(args):
             approval_policy=args.approval,
             max_steps=args.max_steps,
             max_new_tokens=args.max_new_tokens,
+            ooda=ooda,
         )
     return MiniAgent(
         model_client=model,
@@ -1126,6 +1231,7 @@ def build_agent(args):
         approval_policy=args.approval,
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
+        ooda=ooda,
     )
 
 
@@ -1152,6 +1258,7 @@ def build_arg_parser():
     parser.add_argument("--max-new-tokens", type=int, default=512, help="Maximum model output tokens per step.")
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature sent to Ollama.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling value sent to Ollama.")
+    parser.add_argument("--no-ooda", action="store_true", help="Disable OODA loop (orient, decide, verify). For baseline comparison.")
     return parser
 
 
@@ -1195,6 +1302,16 @@ def main(argv=None):
         if user_input == "/reset":
             agent.reset()
             print("session reset")
+            continue
+        if user_input == "/journal":
+            text = agent.knowledge.entries_text()
+            print(text or "(no journal entries)")
+            continue
+        if user_input == "/rules":
+            if agent.rules:
+                print(agent.rules.format_state())
+            else:
+                print("(OODA disabled)")
             continue
 
         print()

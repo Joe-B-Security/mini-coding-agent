@@ -1,12 +1,13 @@
 &nbsp;
 # Mini-Coding-Agent
 
-This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent) with improvements to how the agent reads and secures code.
+This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent) with improvements to how the agent reads, secures, and writes code.
 
-The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing for structural code understanding, and a secure factory pattern that locks workspace boundaries at tool creation time. Tested against the Flask codebase with qwen3.5-9b.
+The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing for structural code understanding, a secure factory pattern that locks workspace boundaries at tool creation time, and an OODA loop with a Datalog-inspired rule engine that verifies code before accepting it. Tested against real codebases with qwen3.5-9b.
 
 **[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
 **[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
+**[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-08-improving-coding-agent-harness-part2/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
@@ -26,6 +27,18 @@ The `SecureToolFactory` manufactures code reading tools locked to the workspace 
 
 Implementation is in `secure_tools.py` (~120 lines).
 
+### Part 2: OODA loop for code writing ([blog post](https://joe-b-security.github.io/posts/2026-04-08-improving-coding-agent-harness-part2/))
+
+The agent's flat ask-execute-record cycle is restructured into an OODA loop: Observe (classify intent), Orient (retrieve relevant code and knowledge), Decide (derive verify gates from rules), Act (model writes code), Verify (run syntax checks and tests before accepting).
+
+A Datalog-inspired rule engine (`rules.py`) makes deterministic decisions: TDD gates that fire when modified files have test coverage, and syntax verification for fix/create tasks. Rules use variable binding across conditions: `file_modified(?file) + test_covers(?test, ?file) -> verify_gate("run_tests")`.
+
+A persistent knowledge store (`knowledge.py`) injects org conventions into the prompt. Knowledge entries persist to disk and load automatically in future sessions. Two tiers: workspace entries for the current project, global entries across projects.
+
+The verify phase catches broken tests and syntax errors, feeding failure output back to the model for retry. The `--no-ooda` flag disables the loop for baseline comparison.
+
+Implementation is in `ooda.py`, `rules.py`, and `knowledge.py`.
+
 ### Run it
 
 ```bash
@@ -41,7 +54,7 @@ uv run python mini_coding_agent.py \
 ### Tests
 
 ```bash
-uv run python -m pytest tests/ -v   # 70 tests, no model needed
+uv run python -m pytest tests/ -v   # 147 tests, no model needed
 ```
 
 ---
