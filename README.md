@@ -5,9 +5,9 @@ This is a fork of [mini-coding-agent](https://github.com/rasbt/mini-coding-agent
 
 The original agent has grep and line-range file reads. This fork adds tree-sitter AST parsing for structural code understanding, a secure factory pattern that locks workspace boundaries at tool creation time, and an OODA loop with a Datalog-inspired rule engine that verifies code before accepting it. Tested against real codebases with qwen3.5-9b.
 
-**[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
-**[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
-**[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-08-improving-coding-agent-harness-part2/)**
+- **[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
+- **[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
+- **[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-09-improving-coding-agent-harness-part2/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
@@ -27,7 +27,7 @@ The `SecureToolFactory` manufactures code reading tools locked to the workspace 
 
 Implementation is in `secure_tools.py` (~120 lines).
 
-### Part 2: OODA loop for code writing ([blog post](https://joe-b-security.github.io/posts/2026-04-08-improving-coding-agent-harness-part2/))
+### Part 2: OODA loop for code writing ([blog post](https://joe-b-security.github.io/posts/2026-04-09-improving-coding-agent-harness-part2/))
 
 The agent's flat ask-execute-record cycle is restructured into an OODA loop: Observe (classify intent), Orient (retrieve relevant code and knowledge), Decide (derive verify gates from rules), Act (model writes code), Verify (run syntax checks and tests before accepting).
 
