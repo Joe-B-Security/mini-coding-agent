@@ -8,6 +8,7 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 - **[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
 - **[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
 - **[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-09-improving-coding-agent-harness-part2/)**
+- **[Part 2.5: Writing Secure Code](https://joe-b-security.github.io/posts/2026-04-10-improving-coding-agent-harness-part2-5/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
@@ -39,6 +40,20 @@ The verify phase catches broken tests and syntax errors, feeding failure output 
 
 Implementation is in `ooda.py`, `rules.py`, and `knowledge.py`.
 
+### Part 2.5: RAG for secure code writing ([blog post](https://joe-b-security.github.io/posts/2026-04-10-improving-coding-agent-harness-part2-5/))
+
+Extends Part 2's OODA orient phase with a retrieval pipeline over a curated OWASP security corpus so the agent sees authoritative guidance at the moment it is about to write code.
+
+The pipeline covers the whole data path. 17 OWASP cheatsheets are parsed into 472 `Section` objects by a heading-aware markdown parser. Sections are tagged deterministically against a 35-category taxonomy (`corpus-data/taxonomy.json`): categories by direct lookup from the taxonomy's cheatsheet filename mappings, languages from code fence markers, frameworks and technologies from keyword dictionaries, role from heading heuristics. The enrichment text prepended to each chunk before embedding is `path: <heading path>` + `categories: <ids>` + `control intent: <category descriptions>` + `languages` + `frameworks` + the raw content, so the embedding carries taxonomic coordinates not just surface words. Embeddings come from `embeddinggemma-300m` (768-dim) via a local OpenAI-compatible `/v1/embeddings` endpoint.
+
+Retrieval is dense cosine similarity over the enriched embeddings. The enrichment does enough work that the embedder produces vectors grounded in the taxonomy's control space, and the top-k results for security-relevant queries consistently pull from the right cheatsheet. The blog post discusses what a production version would layer on top: a lexical channel (BM25) fused with RRF, cross-encoder re-ranking, category-aware boosting, and feedback loops.
+
+Retrieved guidance is injected into `ooda.orient()` as a third return value (`security_context`) alongside code context and knowledge entries, and lands in the prompt tail where small-model attention is strongest. The corpus is cached to disk keyed by a SHA-256 hash of the cache version plus every corpus file's bytes plus the taxonomy; a cold build takes ~20s on my hardware, warm builds load in ~0.1s.
+
+Demo eval against qwen3.5-9b, single-shot chat completion, one task: a Flask `/api/webhook/preview` endpoint that accepts a user-supplied `webhook_url` and fetches it with `requests.get`. Baseline produces a raw `requests.get(webhook_url)` with no validation, trivially vulnerable to cloud metadata endpoints and internal service probing. RAG produces scheme validation (`http`/`https` only via `urlparse`), DNS resolution, `ipaddress` stdlib checks (`is_private`, `is_loopback`, `is_link_local`) on every resolved IP, and `allow_redirects=False` on the fetch. Retrieval returned 2/4 hits from the SSRF Prevention cheatsheet.
+
+Implementation is in `knowledge.py` (the security corpus section) and `corpus-data/` (taxonomy + cheatsheets). Integration points in `ooda.py` and `mini_coding_agent.py` are minimal: one new return value from `orient()`, one new prompt slot on `MiniAgent.prompt()`, three new CLI flags (`--security-corpus`, `--embedding-endpoint`, `--embedding-model`), and a `/security` REPL command that prints the last retrieved context.
+
 ### Run it
 
 ```bash
@@ -51,10 +66,12 @@ uv run python mini_coding_agent.py \
     --cwd /path/to/a/python/project
 ```
 
+To enable the security corpus from Part 2.5, add `--security-corpus corpus-data`. The embedding server at `http://127.0.0.1:4444/v1/embeddings` must be running with an embedding model loaded (default `unsloth/text-embedding-embeddinggemma-300m`). First run parses and embeds the corpus (~20s on my hardware); subsequent runs load from cache in well under a second.
+
 ### Tests
 
 ```bash
-uv run python -m pytest tests/ -v   # 147 tests, no model needed
+uv run python -m pytest tests/ -v   # 206 passing (204 + 2 live-embedding tests if the server is up), no model needed
 ```
 
 ---

@@ -67,6 +67,20 @@ def clip(text, limit=MAX_TOOL_OUTPUT):
     return text[:limit] + f"\n...[truncated {len(text) - limit} chars]"
 
 
+def _format_tool_args(args):
+    """Compact key=value string for stderr tool-call tracing. Long values
+    are clipped so multi-line content doesn't wreck the log."""
+    if not isinstance(args, dict):
+        return ""
+    parts = []
+    for k, v in args.items():
+        s = str(v).replace("\n", "\\n")
+        if len(s) > 60:
+            s = s[:57] + "..."
+        parts.append(f"{k}={s!r}")
+    return " ".join(parts)
+
+
 def middle(text, limit):
     text = str(text).replace("\n", " ")
     if len(text) <= limit:
@@ -236,12 +250,13 @@ class OllamaModelClient:
 class OpenAIModelClient:
     """Client for any OpenAI-compatible endpoint (vLLM, llama.cpp, etc)."""
 
-    def __init__(self, model, host, temperature, top_p, timeout):
+    def __init__(self, model, host, temperature, top_p, timeout, reasoning_effort=None):
         self.model = model
         self.host = host.rstrip("/")
         self.temperature = temperature
         self.top_p = top_p
         self.timeout = timeout
+        self.reasoning_effort = reasoning_effort
 
     def complete(self, prompt, max_new_tokens):
         payload = {
@@ -252,6 +267,8 @@ class OpenAIModelClient:
             "top_p": self.top_p,
             "stream": False,
         }
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
         request = urllib.request.Request(
             self.host + "/v1/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -290,11 +307,18 @@ class MiniAgent:
         max_depth=1,
         read_only=False,
         ooda=True,
+        security_corpus=None,
     ):
         self.model_client = model_client
         self.workspace = workspace
         self.root = Path(workspace.repo_root)
         self.secure = SecureToolFactory(self.root)
+        if depth == 0:
+            print(
+                f"[secure factory] locked workspace root to {self.secure.root} "
+                f"(symlink escapes and absolute paths outside root are blocked)",
+                file=sys.stderr,
+            )
         self.session_store = session_store
         self.approval_policy = approval_policy
         self.max_steps = max_steps
@@ -320,6 +344,10 @@ class MiniAgent:
         else:
             self.knowledge = None
             self.rules = None
+        # ---
+        # --- Enhancement 4: security corpus for RAG at orient time ---
+        self.security_corpus = security_corpus
+        self.last_security_context = ""
         # ---
         self.tools = self.build_tools()
         self.prefix = self.build_prefix()
@@ -540,13 +568,15 @@ class MiniAgent:
     ########################################################
     #### 2) Prompt Shape And Cache Reuse (Continued) #######
     ########################################################
-    def prompt(self, user_message, code_context="", knowledge_context=""):
-        # --- Enhancement 3: inject orient context and knowledge ---
+    def prompt(self, user_message, code_context="", knowledge_context="", security_context=""):
+        # --- Enhancement 3 + 4: inject orient context, knowledge, and security guidance ---
         code_block = f"\n{code_context}\n" if code_context else ""
+        tail_parts = [user_message]
         if knowledge_context:
-            user_block = f"{user_message}\n\n{knowledge_context}"
-        else:
-            user_block = user_message
+            tail_parts.append(knowledge_context)
+        if security_context:
+            tail_parts.append(security_context)
+        user_block = "\n\n".join(tail_parts)
         # ---
         return textwrap.dedent(
             f"""\
@@ -583,18 +613,22 @@ class MiniAgent:
             memory["task"] = clip(user_message.strip(), 300)
         self.record({"role": "user", "content": user_message, "created_at": now()})
 
-        # --- Enhancement 3: OODA Observe + Orient + Decide ---
+        # --- Enhancement 3 + 4: OODA Observe + Orient (with security corpus) + Decide ---
         self.modified_files = []
         verify_attempts = 0
         if self.ooda:
             observation = observe(user_message, self.session)
-            code_context, knowledge_context = orient(observation, self.knowledge)
+            code_context, knowledge_context, security_context = orient(
+                observation, self.knowledge, self.security_corpus,
+            )
+            self.last_security_context = security_context
             decision = decide(self.rules)
             if self.rules.trace or self.rules.store.trace:
                 print(self.rules.format_trace(), file=sys.stderr)
         else:
             code_context = ""
             knowledge_context = ""
+            security_context = ""
             decision = None
         # ---
 
@@ -604,7 +638,10 @@ class MiniAgent:
 
         while tool_steps < self.max_steps and attempts < max_attempts:
             attempts += 1
-            raw = self.model_client.complete(self.prompt(user_message, code_context, knowledge_context), self.max_new_tokens)
+            raw = self.model_client.complete(
+                self.prompt(user_message, code_context, knowledge_context, security_context),
+                self.max_new_tokens,
+            )
             kind, payload = self.parse(raw)
 
             if kind == "tool":
@@ -672,6 +709,7 @@ class MiniAgent:
     def run_tool(self, name, args):
         tool = self.tools.get(name)
         if tool is None:
+            print(f"[tool] unknown: {name}", file=sys.stderr)
             return f"error: unknown tool '{name}'"
         try:
             self.validate_tool(name, args)
@@ -685,6 +723,7 @@ class MiniAgent:
             return f"error: repeated identical tool call for {name}; choose a different tool or return a final answer"
         if tool["risky"] and not self.approve(name, args):
             return f"error: approval denied for {name}"
+        print(f"[tool] {name} {_format_tool_args(args)}", file=sys.stderr)
         try:
             return clip(tool["run"](args))
         except Exception as exc:
@@ -1202,17 +1241,50 @@ def build_agent(args):
     workspace = WorkspaceContext.build(args.cwd)
     store = SessionStore(Path(workspace.repo_root) / ".mini-coding-agent" / "sessions")
     ClientClass = OpenAIModelClient if args.backend == "openai" else OllamaModelClient
-    model = ClientClass(
+    client_kwargs = dict(
         model=args.model,
         host=args.host,
         temperature=args.temperature,
         top_p=args.top_p,
         timeout=args.ollama_timeout,
     )
+    reasoning_effort = getattr(args, "reasoning_effort", None)
+    if args.backend == "openai" and reasoning_effort:
+        client_kwargs["reasoning_effort"] = reasoning_effort
+    model = ClientClass(**client_kwargs)
     session_id = args.resume
     if session_id == "latest":
         session_id = store.latest()
     ooda = not getattr(args, "no_ooda", False)
+
+    # --- Enhancement 4: optional security corpus for RAG at orient ---
+    security_corpus = None
+    corpus_data_dir = getattr(args, "security_corpus", None)
+    if corpus_data_dir:
+        from knowledge import SecurityCorpus, EmbeddingGemmaClient, EmbeddingServerError
+        cache_dir = Path(workspace.repo_root) / ".mini-coding-agent" / "security-index"
+        embed_endpoint = getattr(args, "embedding_endpoint", None) or "http://127.0.0.1:4444/v1/embeddings"
+        embed_model = getattr(args, "embedding_model", None) or "unsloth/text-embedding-embeddinggemma-300m"
+        embedder = EmbeddingGemmaClient(endpoint=embed_endpoint, model=embed_model)
+        security_corpus = SecurityCorpus(
+            data_dir=Path(corpus_data_dir),
+            cache_dir=cache_dir,
+            embedder=embedder,
+        )
+        try:
+            stats = security_corpus.build()
+            cache_note = "from cache" if stats.cache_hit else "cold built"
+            print(
+                f"[security corpus] {cache_note}: "
+                f"{stats.section_count} sections, "
+                f"{stats.categories_with_content} categories populated",
+                file=sys.stderr,
+            )
+        except EmbeddingServerError as exc:
+            print(f"[security corpus] disabled: {exc}", file=sys.stderr)
+            security_corpus = None
+    # ---
+
     if session_id:
         return MiniAgent.from_session(
             model_client=model,
@@ -1223,6 +1295,7 @@ def build_agent(args):
             max_steps=args.max_steps,
             max_new_tokens=args.max_new_tokens,
             ooda=ooda,
+            security_corpus=security_corpus,
         )
     return MiniAgent(
         model_client=model,
@@ -1232,6 +1305,7 @@ def build_agent(args):
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
         ooda=ooda,
+        security_corpus=security_corpus,
     )
 
 
@@ -1259,6 +1333,31 @@ def build_arg_parser():
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature sent to Ollama.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling value sent to Ollama.")
     parser.add_argument("--no-ooda", action="store_true", help="Disable OODA loop (orient, decide, verify). For baseline comparison.")
+    parser.add_argument(
+        "--security-corpus",
+        default=None,
+        help="Path to a corpus-data directory (taxonomy.json + cheatsheets/). Enables retrieval over OWASP cheatsheets at orient time.",
+    )
+    parser.add_argument(
+        "--embedding-endpoint",
+        default=None,
+        help="URL for the embedding server (default http://127.0.0.1:4444/v1/embeddings).",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default=None,
+        help="Embedding model name (default unsloth/text-embedding-embeddinggemma-300m).",
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        default=None,
+        choices=("none", "low", "medium", "high"),
+        help=(
+            "Pass reasoning_effort to the OpenAI-compatible endpoint. Set to 'none' "
+            "to disable the thinking phase on reasoning models like qwen3.5-9b so "
+            "the full output budget goes to the final response."
+        ),
+    )
     return parser
 
 
@@ -1312,6 +1411,14 @@ def main(argv=None):
                 print(agent.rules.format_state())
             else:
                 print("(OODA disabled)")
+            continue
+        if user_input == "/security":
+            if agent.security_corpus is None:
+                print("(security corpus not enabled; pass --security-corpus <path>)")
+            elif not agent.last_security_context:
+                print("(no retrieval has run yet)")
+            else:
+                print(agent.last_security_context)
             continue
 
         print()

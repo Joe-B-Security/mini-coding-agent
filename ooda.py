@@ -15,10 +15,11 @@ answer. Failed verification loops back with feedback.
 
 import ast
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from knowledge import KnowledgeStore
+from knowledge import KnowledgeStore, SecurityCorpus, RetrievalHit
 from rules import RuleEngine
 
 
@@ -52,17 +53,32 @@ def observe(user_message: str, session: dict) -> Observation:
     )
 
 
-def orient(observation: Observation, knowledge: KnowledgeStore) -> tuple[str, str]:
-    """Retrieve relevant code and knowledge entries separately.
+def orient(
+    observation: Observation,
+    knowledge: KnowledgeStore,
+    security_corpus: SecurityCorpus | None = None,
+    security_top_k: int = 3,
+) -> tuple[str, str, str]:
+    """Retrieve relevant code, knowledge entries, and security guidance.
 
-    Returns (code_context, knowledge_context) so they can be placed
-    at different positions in the prompt. Code context goes early,
-    knowledge entries go right before the user message.
+    Returns (code_context, knowledge_context, security_context) so they can
+    be placed at different positions in the prompt. Code context goes early,
+    knowledge entries and security guidance go right before the user message
+    where small-model attention is strongest.
+
+    The security_context is empty when no corpus is provided, which is the
+    Part 2 behavior. When provided, dense retrieval runs over the corpus
+    using the user message as the query, and the top-k hits are formatted
+    for prompt injection.
     """
     query = observation.user_message
     code_context = knowledge.orient(query, top_k=3)
     knowledge_context = knowledge.entries_text()
-    return code_context, knowledge_context
+    security_context = ""
+    if security_corpus is not None:
+        hits = security_corpus.retrieve(query, top_k=security_top_k)
+        security_context = security_corpus.format_for_prompt(hits)
+    return code_context, knowledge_context, security_context
 
 
 def decide(engine: RuleEngine) -> Decision:
@@ -77,6 +93,7 @@ def verify(gates: list[str], root: Path, modified_files: list[str]) -> Verificat
     failures = []
 
     if "syntax_check" in gates:
+        syntax_failures_before = len(failures)
         for rel_path in modified_files:
             if not rel_path.endswith(".py"):
                 continue
@@ -88,11 +105,20 @@ def verify(gates: list[str], root: Path, modified_files: list[str]) -> Verificat
                 ast.parse(source, filename=rel_path)
             except SyntaxError as exc:
                 failures.append(f"SyntaxError in {rel_path} line {exc.lineno}: {exc.msg}")
+        syntax_passed = len(failures) == syntax_failures_before
+        print(
+            f"  [verify] syntax_check: {'pass' if syntax_passed else 'fail'} "
+            f"({', '.join(modified_files)})",
+            file=sys.stderr,
+        )
 
     if "run_tests" in gates:
         test_result = _run_tests(root)
         if test_result is not None:
             failures.append(test_result)
+            print(f"  [verify] run_tests: fail", file=sys.stderr)
+        else:
+            print(f"  [verify] run_tests: pass", file=sys.stderr)
 
     if failures:
         feedback = "Verification failed. Fix these issues:\n" + "\n".join(f"- {f}" for f in failures)

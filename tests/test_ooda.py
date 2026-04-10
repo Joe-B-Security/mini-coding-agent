@@ -50,7 +50,7 @@ class TestOrient:
             recent_files=[],
             step_count=0,
         )
-        code_ctx, knowledge_ctx = orient(obs, knowledge)
+        code_ctx, knowledge_ctx, _sec = orient(obs, knowledge)
         assert "auth.py" in code_ctx
         assert "authenticate" in code_ctx
 
@@ -63,7 +63,7 @@ class TestOrient:
             recent_files=[],
             step_count=0,
         )
-        code_ctx, knowledge_ctx = orient(obs, knowledge)
+        code_ctx, knowledge_ctx, _sec = orient(obs, knowledge)
         assert "test_cmd" in knowledge_ctx
         assert "pytest --no-header" in knowledge_ctx
 
@@ -72,9 +72,32 @@ class TestOrient:
         knowledge.index_workspace()
         obs = Observation(user_message="hello",
                           recent_files=[], step_count=0)
-        code_ctx, knowledge_ctx = orient(obs, knowledge)
+        code_ctx, knowledge_ctx, _sec = orient(obs, knowledge)
         assert code_ctx == ""
         assert knowledge_ctx == ""
+
+    def test_no_security_corpus_returns_empty_string(self, tmp_path):
+        knowledge = KnowledgeStore(tmp_path)
+        knowledge.index_workspace()
+        obs = Observation(user_message="store a password", recent_files=[], step_count=0)
+        _, _, security_ctx = orient(obs, knowledge, security_corpus=None)
+        assert security_ctx == ""
+
+    def test_security_corpus_populates_security_context(self, tmp_path):
+        knowledge = KnowledgeStore(tmp_path)
+        knowledge.index_workspace()
+
+        class StubCorpus:
+            def retrieve(self, query, top_k=3):
+                return ["stub-hit"]
+
+            def format_for_prompt(self, hits):
+                return "Security guidance:\n- retrieved content"
+
+        obs = Observation(user_message="store a password", recent_files=[], step_count=0)
+        _, _, security_ctx = orient(obs, knowledge, security_corpus=StubCorpus())
+        assert "Security guidance" in security_ctx
+        assert "retrieved content" in security_ctx
 
 
 class TestDecide:
@@ -171,7 +194,7 @@ class TestBaselineGaps:
         knowledge.index_workspace()
         obs = Observation(user_message="fix the authentication bug",
                           recent_files=[], step_count=0)
-        code_ctx, _ = orient(obs, knowledge)
+        code_ctx, _, _ = orient(obs, knowledge)
         assert "authenticate" in code_ctx
 
     def test_no_verify_accepts_broken_code(self, tmp_path):

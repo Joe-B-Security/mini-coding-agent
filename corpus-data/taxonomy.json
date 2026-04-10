@@ -1,0 +1,555 @@
+{
+  "version": "2.0",
+  "description": "Security control taxonomy. Categories map to cheatsheets by filename.",
+  "categories": [
+    {
+      "id": "output-encoding",
+      "name": "Output Encoding and Context-Aware Escaping",
+      "description": "Encode or escape output for the target interpreter context (HTML elements, attributes, URLs, JavaScript, CSS) to prevent content from being misinterpreted as code. Includes canonical input decoding as a prerequisite.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Cross_Site_Scripting_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "DOM_based_XSS_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "content-sanitization",
+      "name": "Rich Content Sanitization",
+      "description": "Sanitize user-supplied rich content (HTML from WYSIWYG editors, SVG, Markdown, CSS, BBCode) before rendering. Prevent dynamic code execution (eval) and template injection.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Cross_Site_Scripting_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Input_Validation_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "DOM_Clobbering_Prevention_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "database-query-injection",
+      "name": "Database and Query Injection Prevention",
+      "description": "Prevent injection into database queries (SQL, NoSQL, HQL, Cypher), directory services (LDAP), and XML queries (XPath). Use parameterized queries or equivalent safe APIs.",
+      "cheatsheet_mappings": [
+        {
+          "file": "SQL_Injection_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Query_Parameterization_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "LDAP_Injection_Prevention_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "Database_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "server-side-injection",
+      "name": "Server-Side Injection Prevention",
+      "description": "Prevent injection into OS commands, LaTeX processors, regex engines, JNDI, memcache, format strings, SMTP/IMAP, and log systems. Covers all non-database, non-XSS interpreter injection.",
+      "cheatsheet_mappings": [
+        {
+          "file": "OS_Command_Injection_Defense_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Injection_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Logging_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "ssrf-prevention",
+      "name": "SSRF Prevention and Outbound Request Control",
+      "description": "Validate and restrict server-side outbound requests. Prevent SSRF through URL/protocol/domain allowlisting, blocking private IPs, and disabling automatic redirect following.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "memory-safety-deserialization",
+      "name": "Memory Safety, XML Parsing, and Deserialization",
+      "description": "Use memory-safe coding patterns (C/C++), configure XML parsers securely (disable external entities), and enforce safe deserialization with type allowlists.",
+      "cheatsheet_mappings": [
+        {
+          "file": "XML_External_Entity_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Deserialization_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "XML_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "input-validation",
+      "name": "Input Validation Framework",
+      "description": "Define and enforce server-side input validation rules: structural validation, data format checking, cross-field consistency, and documented validation specifications.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Input_Validation_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Bean_Validation_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "business-logic-security",
+      "name": "Business Logic Security and Anti-Automation",
+      "description": "Enforce business rules: sequential workflow processing, business limits, transactional integrity, resource locking, and rate limiting to prevent abuse.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Abuse_Case_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Denial_of_Service_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "cookie-security",
+      "name": "Cookie Security Configuration",
+      "description": "Configure all cookie security attributes: Secure flag, SameSite policy, __Host- prefix, HttpOnly for session cookies.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Session_Management_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Cookie_Theft_Mitigation_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "browser-security-headers",
+      "name": "HTTP Security Response Headers",
+      "description": "Configure security-related HTTP response headers: HSTS, CSP, CORS, X-Content-Type-Options, Referrer-Policy, frame-ancestors, and correct Content-Type.",
+      "cheatsheet_mappings": [
+        {
+          "file": "HTTP_Headers_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Content_Security_Policy_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "HTTP_Strict_Transport_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "Clickjacking_Defense_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "csrf-origin-protection",
+      "name": "CSRF and Cross-Origin Protection",
+      "description": "Prevent cross-site request forgery and cross-origin attacks via anti-forgery tokens, CORS preflight enforcement, safe HTTP methods, origin separation, and postMessage validation.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Unvalidated_Redirects_and_Forwards_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "HTML5_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "api-http-security",
+      "name": "API and HTTP Layer Security",
+      "description": "Secure HTTP message handling: redirect policies, trusted header verification, request smuggling prevention, IP forwarding header trust, and HTTP parameter pollution defense.",
+      "cheatsheet_mappings": [
+        {
+          "file": "REST_Security_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "HTTP_Headers_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "graphql-security",
+      "name": "GraphQL Security",
+      "description": "Secure GraphQL endpoints: disable introspection in production, enforce query depth limits, amount limits, and cost analysis to prevent resource exhaustion.",
+      "cheatsheet_mappings": [
+        {
+          "file": "GraphQL_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "websocket-security",
+      "name": "WebSocket Security",
+      "description": "Secure WebSocket connections: enforce WSS (TLS), validate Origin header during handshake, use dedicated session tokens, and validate tokens via authenticated HTTP endpoints.",
+      "cheatsheet_mappings": [
+        {
+          "file": "WebSocket_Security_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "file-handling-security",
+      "name": "File Upload, Storage, and Download Security",
+      "description": "Validate uploaded files (size, type, magic bytes, archive limits), store safely (prevent execution, path traversal), and serve securely (Content-Disposition, filename sanitization, antivirus scanning).",
+      "cheatsheet_mappings": [
+        {
+          "file": "File_Upload_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "password-policy",
+      "name": "Password Policy and Validation",
+      "description": "Implement modern password policy: minimum length, allow all characters, breach database checking, context-specific word blocking, no forced rotation, UI best practices (type=password, allow paste).",
+      "cheatsheet_mappings": [
+        {
+          "file": "Authentication_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Password_Storage_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Credential_Stuffing_Prevention_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "authentication-security",
+      "name": "Authentication Protection and Credential Lifecycle",
+      "description": "Protect authentication endpoints: brute force/credential stuffing prevention, remove default accounts, enforce consistent auth pathways, manage initial credentials, disable security questions, and secure password reset with MFA respect.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Authentication_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Credential_Stuffing_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Forgot_Password_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "mfa-implementation",
+      "name": "Multi-Factor Authentication Implementation",
+      "description": "Implement MFA: require for L2, TOTP/lookup secrets/OOB codes with CSPRNG, one-time use, entropy requirements, code lifetime limits, OOB channel security, and brute force protection.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Multifactor_Authentication_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Authentication_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "idp-integration",
+      "name": "Identity Provider and Federation Integration",
+      "description": "Securely integrate with external IdPs: namespace user IDs per IdP, validate assertion signatures, prevent SAML replay, verify authentication strength claims.",
+      "cheatsheet_mappings": [
+        {
+          "file": "SAML_Security_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Authentication_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "session-token-management",
+      "name": "Session Token Generation and Timeout Configuration",
+      "description": "Configure session management: server-side token verification, dynamic token generation with CSPRNG entropy, token regeneration on auth, inactivity and absolute timeouts.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Session_Management_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "session-termination-protection",
+      "name": "Session Termination and Abuse Prevention",
+      "description": "Ensure proper session termination on logout, account disable, and credential change. Enable user/admin session management. Require re-authentication for sensitive operations. Coordinate federated sessions.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Session_Management_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "authorization-enforcement",
+      "name": "Authorization Enforcement",
+      "description": "Implement and enforce authorization at function, data-object, field, and tenant levels. Server-side enforcement with documented rules.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Authorization_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Authorization_Testing_Automation_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "Multi_Tenant_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "self-contained-token-validation",
+      "name": "JWT and Self-Contained Token Validation",
+      "description": "Validate JWTs/self-contained tokens: signature/MAC verification, algorithm allowlist, trusted key sources, expiry, type, audience, and issuer checks.",
+      "cheatsheet_mappings": [
+        {
+          "file": "JSON_Web_Token_for_Java_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "oauth-client-resource-server",
+      "name": "OAuth Client and Resource Server Security",
+      "description": "Implement OAuth client correctly (PKCE, state/nonce, mix-up protection, token confinement) and configure resource server token validation (audience, scope, subject, auth strength).",
+      "cheatsheet_mappings": [
+        {
+          "file": "OAuth2_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "oauth-authorization-server",
+      "name": "OAuth Authorization Server Configuration",
+      "description": "Configure the OAuth AS: redirect URI validation, authorization code lifecycle, grant restrictions, PKCE enforcement, refresh token management, client authentication, dynamic registration safety, scope limits.",
+      "cheatsheet_mappings": [
+        {
+          "file": "OAuth2_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "oidc-consent-management",
+      "name": "OIDC Client, Provider, and Consent Management",
+      "description": "Secure OIDC relying party (ID token replay/nonce, user identification, issuer validation, audience, back-channel logout), OpenID Provider (response modes, forced logout), and consent management.",
+      "cheatsheet_mappings": [
+        {
+          "file": "OAuth2_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "cryptographic-configuration",
+      "name": "Cryptographic Configuration and Key Management",
+      "description": "Use approved algorithms, sufficient key sizes, crypto agility, authenticated encryption, CSPRNG, password hashing (Argon2id/bcrypt), and maintain crypto inventory with key lifecycle policy.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Cryptographic_Storage_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Key_Management_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Password_Storage_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "tls-transport-security",
+      "name": "TLS Configuration and Transport Security",
+      "description": "Configure TLS versions and cipher suites, mTLS validation, enforce HTTPS for all external and internal communications, and manage certificate trust.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Transport_Layer_Security_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "TLS_Cipher_String_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Transport_Layer_Protection_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "secrets-backend-auth",
+      "name": "Secrets Management and Backend Service Authentication",
+      "description": "Set up secrets management, use service accounts with least privilege, eliminate default credentials, and document all backend communication needs.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Secrets_Management_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Database_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "Microservices_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "deployment-hardening",
+      "name": "Production Deployment Hardening",
+      "description": "Remove debug modes, source control metadata, directory listings, HTTP TRACE, exposed internal endpoints, and test/sample code from production.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Error_Handling_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "Attack_Surface_Analysis_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "sensitive-data-protection",
+      "name": "Sensitive Data Classification and Protection",
+      "description": "Classify sensitive data, define protection requirements, keep sensitive data out of URLs, prevent server-side caching, block third-party leakage, set anti-caching headers, clear client-side data on logout.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Cryptographic_Storage_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "REST_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "HTML5_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    },
+    {
+      "id": "defensive-coding",
+      "name": "Defensive Coding Practices",
+      "description": "Apply defensive coding patterns: return only required fields, mass assignment protection, strict type checking, prototype pollution prevention, HTTP parameter pollution defense.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Mass_Assignment_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Prototype_Pollution_Prevention_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "security-logging",
+      "name": "Security Logging and Event Monitoring",
+      "description": "Configure structured security logging: metadata, timestamps, destinations, sensitive data handling, security event capture (auth, authz, control bypass), log protection, and secure log transport.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Logging_Cheat_Sheet.md",
+          "relevance": "primary"
+        },
+        {
+          "file": "Logging_Vocabulary_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "error-handling",
+      "name": "Secure Error Handling",
+      "description": "Implement secure error handling: generic error messages (no stack traces/secrets), graceful degradation when external resources fail, fail-secure exception handling.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Error_Handling_Cheat_Sheet.md",
+          "relevance": "primary"
+        }
+      ]
+    },
+    {
+      "id": "webrtc-security",
+      "name": "WebRTC Security Configuration",
+      "description": "Secure WebRTC infrastructure: TURN server IP restrictions, DTLS certificate and cipher management, SRTP authentication and resilience, signaling server rate limiting and input validation.",
+      "cheatsheet_mappings": [
+        {
+          "file": "Transport_Layer_Security_Cheat_Sheet.md",
+          "relevance": "secondary"
+        },
+        {
+          "file": "Denial_of_Service_Cheat_Sheet.md",
+          "relevance": "secondary"
+        }
+      ]
+    }
+  ]
+}
