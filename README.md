@@ -8,7 +8,7 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 - **[Part 1: Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/)**
 - **[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
 - **[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-09-improving-coding-agent-harness-part2/)**
-- **[Part 2.5: Writing Secure Code](https://joe-b-security.github.io/posts/2026-04-10-improving-coding-agent-harness-part2-5/)**
+- **[Part 2.5, Securely Writing Code](https://joe-b-security.github.io/posts/2026-04-10-improving-coding-agent-harness-part2-5/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
