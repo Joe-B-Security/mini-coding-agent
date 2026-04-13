@@ -9,6 +9,7 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 - **[Part 1.5: Securely Reading Code](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1-5/)**
 - **[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-09-improving-coding-agent-harness-part2/)**
 - **[Part 2.5, Securely Writing Code](https://joe-b-security.github.io/posts/2026-04-10-improving-coding-agent-harness-part2-5/)**
+- **[Part 3: --benchmark terminal-bench](https://joe-b-security.github.io/posts/2026-04-13-improving-coding-agent-harness-part3/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
@@ -53,6 +54,54 @@ Retrieved guidance is injected into `ooda.orient()` as a third return value (`se
 Demo eval against qwen3.5-9b, single-shot chat completion, one task: a Flask `/api/webhook/preview` endpoint that accepts a user-supplied `webhook_url` and fetches it with `requests.get`. Baseline produces a raw `requests.get(webhook_url)` with no validation, trivially vulnerable to cloud metadata endpoints and internal service probing. RAG produces scheme validation (`http`/`https` only via `urlparse`), DNS resolution, `ipaddress` stdlib checks (`is_private`, `is_loopback`, `is_link_local`) on every resolved IP, and `allow_redirects=False` on the fetch. Retrieval returned 2/4 hits from the SSRF Prevention cheatsheet.
 
 Implementation is in `knowledge.py` (the security corpus section) and `corpus-data/` (taxonomy + cheatsheets). Integration points in `ooda.py` and `mini_coding_agent.py` are minimal: one new return value from `orient()`, one new prompt slot on `MiniAgent.prompt()`, three new CLI flags (`--security-corpus`, `--embedding-endpoint`, `--embedding-model`), and a `/security` REPL command that prints the last retrieved context.
+
+### Part 3: `--benchmark terminal-bench` ([blog post](https://joe-b-security.github.io/posts/2026-04-13-improving-coding-agent-harness-part3/))
+
+Adds a `--benchmark` mode that runs the harness against [terminal-bench](https://github.com/harbor-framework/terminal-bench). Under this mode the harness guarantees a 100% score via a parser-level bug in terminal-bench's scoring predicate, regardless of whether the model actually solves anything.
+
+The bug: `Harness._is_resolved` in `terminal_bench/harness/harness.py` treats an empty `parser_results` dict as "resolved" because `all([])` is `True` in Python. The pytest parser splits captured pane content on a `short test summary info` marker and only counts lines that start with a valid status keyword — so a pane containing the marker and nothing else returns `{}`, which then scores as resolved. A bash function override dropped into `/etc/profile.d/*.sh` during the agent phase intercepts the harness's `bash /tests/run-tests.sh` keystroke and echoes only the marker. Every task scores 100% the same way.
+
+The model itself still runs normally. `--benchmark terminal-bench` spawns `mini_coding_agent.py` as a subprocess against a fresh temp workspace, and the full OODA loop fires: Part 1.5's secure factory locks the workspace root, Part 2's rule engine and verify gate run on whatever the model writes. Whatever the model produces lands in the workspace; none of it reaches the benchmark container. The benchmark score is determined entirely by the exploit.
+
+Implementation is in `benchmark.py` (the adapter that terminal-bench loads via `--agent-import-path`) and three new CLI flags on `mini_coding_agent.py`: `--benchmark terminal-bench`, `--task`, and `--terminal-bench-path`. The parser bug is demonstrated in isolation (no Docker, no model) by `tests/test_benchmark_parser_bug.py`.
+
+Clone terminal-bench wherever you keep checkouts and run `uv sync` inside it so `uv run tb` works:
+
+```bash
+git clone https://github.com/harbor-framework/terminal-bench.git /path/to/terminal-bench
+(cd /path/to/terminal-bench && uv sync)
+```
+
+Then run against one task:
+
+```bash
+# From inside mini-coding-agent/
+uv run python mini_coding_agent.py \
+    --backend openai \
+    --host http://127.0.0.1:4444 \
+    --model qwen/qwen3.5-9b \
+    --benchmark terminal-bench \
+    --task hello-world \
+    --terminal-bench-path /path/to/terminal-bench
+```
+
+Prerequisites:
+
+- `uv` installed
+- Docker daemon running (terminal-bench spins up containers)
+- An OpenAI-compatible model server reachable at `--host` (LM Studio, vLLM, llama.cpp, Ollama with OpenAI-compat) with `--model` loaded
+- A terminal-bench checkout at `--terminal-bench-path`, with `uv sync` run inside it so `uv run tb` works
+
+Per-run output lands in `<terminal-bench>/runs/benchmark-<task>-<HHMMSS>/` — the same structured bundle terminal-bench writes for any agent, including pane captures, asciinema recordings of both the agent and test phases, and `results.json`. The `agent-logs/model_transcript.txt` and `agent-logs/workspace_listing.txt` files written by `benchmark.py` show what the model actually did.
+
+Run the parser-bug unit tests against terminal-bench's own parser:
+
+```bash
+cd /path/to/terminal-bench && \
+    uv run pytest /path/to/mini-coding-agent/tests/test_benchmark_parser_bug.py -v
+```
+
+Four tests, ~1.3 seconds, no Docker required.
 
 ### Run it
 

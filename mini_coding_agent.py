@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1358,11 +1359,119 @@ def build_arg_parser():
             "the full output budget goes to the final response."
         ),
     )
+    parser.add_argument(
+        "--benchmark",
+        choices=("terminal-bench",),
+        default=None,
+        help="Run the model against a benchmark instead of the REPL (Part 3).",
+    )
+    parser.add_argument(
+        "--task",
+        default=None,
+        help="Benchmark task id (e.g. 'hello-world').",
+    )
+    parser.add_argument(
+        "--terminal-bench-path",
+        default=None,
+        help=(
+            "Path to a terminal-bench checkout. Required when --benchmark "
+            "terminal-bench is set."
+        ),
+    )
     return parser
+
+
+def run_terminal_bench(args):
+    """Launch tb run against a terminal-bench checkout with our adapter.
+
+    The adapter (benchmark.py) runs inside tb's venv via
+    `--agent-import-path benchmark:TerminalBenchAdapter`. To make it
+    importable from the tb subprocess we put the mini-coding-agent
+    directory on PYTHONPATH.
+
+    The adapter installs the parser-bug exploit in the task container and
+    then spawns this harness back as a subprocess against a fresh temp
+    workspace, so the model runs through the full OODA loop while the
+    benchmark scores the empty post-test pane left by the exploit. This
+    function reads the resulting results.json and prints a per-trial
+    summary.
+    """
+    if not args.terminal_bench_path:
+        print(
+            "[benchmark] --terminal-bench-path is required (point it at a "
+            "terminal-bench checkout with `uv sync` run inside it)",
+            file=sys.stderr,
+        )
+        return 1
+    tb_root = Path(args.terminal_bench_path).resolve()
+    dataset_path = tb_root / "original-tasks"
+    if not tb_root.exists():
+        print(f"[benchmark] terminal-bench not found at {tb_root}", file=sys.stderr)
+        return 1
+    if not dataset_path.exists():
+        print(f"[benchmark] dataset path not found at {dataset_path}", file=sys.stderr)
+        return 1
+    if not args.task:
+        print("[benchmark] --task is required (e.g. --task hello-world)", file=sys.stderr)
+        return 1
+
+    module_dir = Path(__file__).resolve().parent
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{module_dir}{os.pathsep}{existing}" if existing else str(module_dir)
+
+    run_id = f"benchmark-{args.task}-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+    cmd = [
+        "uv", "run", "tb", "run",
+        "--agent-import-path", "benchmark:TerminalBenchAdapter",
+        "--dataset-path", str(dataset_path),
+        "--task-id", args.task,
+        "--no-rebuild",
+        "--run-id", run_id,
+        "--agent-kwarg", f"model={args.model}",
+        "--agent-kwarg", f"host={args.host}",
+    ]
+    print(f"[benchmark] launching: {' '.join(cmd)}")
+    print(f"[benchmark] cwd={tb_root} model={args.model} host={args.host}")
+
+    result = subprocess.run(cmd, cwd=tb_root, env=env)
+    if result.returncode != 0:
+        print(f"[benchmark] tb run exited with {result.returncode}", file=sys.stderr)
+        return result.returncode
+
+    run_dir = tb_root / "runs" / run_id
+    summary_path = run_dir / "results.json"
+    if not summary_path.exists():
+        print(f"[benchmark] no results.json at {summary_path}", file=sys.stderr)
+        return 1
+
+    print()
+    print(f"[benchmark] run_id={run_id}")
+    print(f"[benchmark] results_dir={run_dir}")
+    for trial_results in sorted(run_dir.glob("*/*/results.json")):
+        data = json.loads(trial_results.read_text())
+        task_id = data.get("task_id", "?")
+        resolved = data.get("is_resolved", False)
+        parser_results = data.get("parser_results", {})
+        trial_dir = trial_results.parent
+        print(f"  {task_id}: is_resolved={resolved} parser_results={parser_results}")
+        workspace_log = next(trial_dir.rglob("workspace_listing.txt"), None)
+        if workspace_log is not None and workspace_log.exists():
+            files = workspace_log.read_text().strip()
+            print(f"    files the model wrote: {files or '(none)'}")
+        transcript = next(trial_dir.rglob("model_transcript.txt"), None)
+        if transcript is not None and transcript.exists():
+            print(f"    full transcript: {transcript}")
+
+    return 0
 
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+
+    if args.benchmark == "terminal-bench":
+        return run_terminal_bench(args)
+
     agent = build_agent(args)
 
     print(build_welcome(agent, model=args.model, host=args.host))
