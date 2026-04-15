@@ -10,6 +10,7 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 - **[Part 2: Writing Code](https://joe-b-security.github.io/posts/2026-04-09-improving-coding-agent-harness-part2/)**
 - **[Part 2.5, Securely Writing Code](https://joe-b-security.github.io/posts/2026-04-10-improving-coding-agent-harness-part2-5/)**
 - **[Part 3: --benchmark terminal-bench](https://joe-b-security.github.io/posts/2026-04-13-improving-coding-agent-harness-part3/)**
+- **[Part 4: Hooks](https://joe-b-security.github.io/posts/2026-04-15-improving-coding-agent-harness-part4/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
@@ -103,6 +104,14 @@ cd /path/to/terminal-bench && \
 
 Four tests, ~1.3 seconds, no Docker required.
 
+### Part 4: Hooks and PyO3 optimisation ([blog post](https://joe-b-security.github.io/posts/2026-04-15-improving-coding-agent-harness-part4/))
+
+Adds a hook framework that fires named events at lifecycle points during tool execution (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `UserPromptSubmit`). Each hook returns an allow/ask/deny decision with optional argument rewrites or output redaction. When multiple hooks match one event, decisions merge with a deny-wins priority. Hooks are either **command hooks** (shell subprocess, language-agnostic) or **callable hooks** (Python function called in-process). Callable hooks can dispatch straight into compiled Rust via a PyO3 extension.
+
+The blog post covers the performance story end-to-end: why subprocess dispatch is slow, what going to in-process Python buys, and what going further to Rust via PyO3 buys on top. The headline measurement on two workloads (~100 benign regex patterns, and bash AST walks via tree-sitter) comes out at 2,143x combined speedup on regex and 335x on AST, with the split between architectural and compilation wins looking very different on the two workloads.
+
+Implementation is `hooks.py` (~260 lines) plus `rust_hook/` (~390 lines of Rust, built with `maturin develop --release`). Example hooks ship in `example_hooks/` with a sample `hooks.json`. New CLI flag `--hooks-file <path>`, with auto-load from `<cwd>/.mini-coding-agent/hooks.json` when unset. `benchmark_hooks.py` runs the headline latency comparison: two workloads (regex scan, bash AST walk) times three architectures (Python subprocess, Python callable, Rust callable), 100 iterations per row, batched timing. `benchmark_scaling.py` runs the regex scan at 10, 50, 100, 500, and 1,000 patterns on both Python and Rust to show how per-call cost grows with classifier complexity on each side.
+
 ### Run it
 
 ```bash
@@ -117,10 +126,12 @@ uv run python mini_coding_agent.py \
 
 To enable the security corpus from Part 2.5, add `--security-corpus corpus-data`. The embedding server at `http://127.0.0.1:4444/v1/embeddings` must be running with an embedding model loaded (default `unsloth/text-embedding-embeddinggemma-300m`). First run parses and embeds the corpus (~20s on my hardware); subsequent runs load from cache in well under a second.
 
+To load hooks from Part 4, add `--hooks-file example_hooks/hooks.json` or drop a `hooks.json` into `<cwd>/.mini-coding-agent/` and the agent will auto-load it. The Rust-backed hooks additionally require a one-time `maturin develop --release` inside `rust_hook/` to build the PyO3 extension.
+
 ### Tests
 
 ```bash
-uv run python -m pytest tests/ -v   # 206 passing (204 + 2 live-embedding tests if the server is up), no model needed
+uv run python -m pytest tests/ -v   # 226 passing + 3 skipped (skipped tests require the Rust extension and the live embedding server), no model needed
 ```
 
 ---
