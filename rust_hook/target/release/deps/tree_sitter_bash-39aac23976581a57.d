@@ -1,9 +1,0 @@
-/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/deps/tree_sitter_bash-39aac23976581a57.d: /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/lib.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../src/node-types.json /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../queries/highlights.scm
-
-/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/deps/libtree_sitter_bash-39aac23976581a57.rlib: /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/lib.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../src/node-types.json /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../queries/highlights.scm
-
-/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/deps/libtree_sitter_bash-39aac23976581a57.rmeta: /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/lib.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../src/node-types.json /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../queries/highlights.scm
-
-/Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/lib.rs:
-/Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../src/node-types.json:
-/Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tree-sitter-bash-0.21.0/bindings/rust/../../queries/highlights.scm:
