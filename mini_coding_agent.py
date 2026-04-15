@@ -20,6 +20,9 @@ from knowledge import KnowledgeStore
 from ooda import observe, orient, decide, verify
 from rules import build_engine
 
+# --- Enhancement 5: hook system ---
+from hooks import HookManager
+
 
 DOC_NAMES = ("AGENTS.md", "README.md", "pyproject.toml", "package.json")
 HELP_TEXT = "/help, /memory, /session, /reset, /exit"
@@ -309,6 +312,7 @@ class MiniAgent:
         read_only=False,
         ooda=True,
         security_corpus=None,
+        hooks=None,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -350,9 +354,23 @@ class MiniAgent:
         self.security_corpus = security_corpus
         self.last_security_context = ""
         # ---
+        # --- Enhancement 5: hook system ---
+        self.hooks = hooks or HookManager(cwd=self.root)
+        # ---
         self.tools = self.build_tools()
         self.prefix = self.build_prefix()
         self.session_path = self.session_store.save(self.session)
+        # --- Enhancement 5: SessionStart event fires once per agent init ---
+        if depth == 0:
+            self.hooks.run(
+                "SessionStart",
+                {
+                    "hook_event_name": "SessionStart",
+                    "session_id": self.session["id"],
+                    "workspace_root": str(self.root),
+                },
+            )
+        # ---
 
     @classmethod
     def from_session(cls, model_client, workspace, session_store, session_id, **kwargs):
@@ -614,6 +632,22 @@ class MiniAgent:
             memory["task"] = clip(user_message.strip(), 300)
         self.record({"role": "user", "content": user_message, "created_at": now()})
 
+        # --- Enhancement 5: UserPromptSubmit event ---
+        prompt_decision = self.hooks.run(
+            "UserPromptSubmit",
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "user_message": user_message,
+                "session_id": self.session["id"],
+            },
+        )
+        if prompt_decision.decision == "deny":
+            reason = prompt_decision.reason or "hook denied prompt"
+            refusal = f"[hook blocked prompt: {reason}]"
+            self.record({"role": "assistant", "content": refusal, "created_at": now()})
+            return refusal
+        # ---
+
         # --- Enhancement 3 + 4: OODA Observe + Orient (with security corpus) + Decide ---
         self.modified_files = []
         verify_attempts = 0
@@ -724,11 +758,64 @@ class MiniAgent:
             return f"error: repeated identical tool call for {name}; choose a different tool or return a final answer"
         if tool["risky"] and not self.approve(name, args):
             return f"error: approval denied for {name}"
+
+        # --- Enhancement 5: PreToolUse hook ---
+        pre = self.hooks.run(
+            "PreToolUse",
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": name,
+                "tool_input": dict(args),
+            },
+        )
+        if pre.decision == "deny":
+            label = pre.hook_name or "hook"
+            reason = pre.reason or "denied"
+            print(f"[hook deny] {label}: {reason}", file=sys.stderr)
+            return f"error: blocked by {label}: {reason}"
+        if pre.decision == "ask":
+            label = pre.hook_name or "hook"
+            reason = pre.reason or "hook requested confirmation"
+            print(f"[hook ask] {label}: {reason}", file=sys.stderr)
+            if not self.approve(name, args):
+                return f"error: approval denied after hook ask ({label}: {reason})"
+        if pre.rewrite_args:
+            args = {**args, **pre.rewrite_args}
+        # ---
+
         print(f"[tool] {name} {_format_tool_args(args)}", file=sys.stderr)
         try:
-            return clip(tool["run"](args))
+            output = clip(tool["run"](args))
         except Exception as exc:
+            # --- Enhancement 5: PostToolUseFailure hook ---
+            self.hooks.run(
+                "PostToolUseFailure",
+                {
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_name": name,
+                    "tool_input": dict(args),
+                    "tool_output": str(exc),
+                    "tool_result_is_error": True,
+                },
+            )
+            # ---
             return f"error: tool {name} failed: {exc}"
+
+        # --- Enhancement 5: PostToolUse hook ---
+        post = self.hooks.run(
+            "PostToolUse",
+            {
+                "hook_event_name": "PostToolUse",
+                "tool_name": name,
+                "tool_input": dict(args),
+                "tool_output": output,
+                "tool_result_is_error": False,
+            },
+        )
+        if post.rewrite_output is not None:
+            output = post.rewrite_output
+        # ---
+        return output
 
     def repeated_tool_call(self, name, args):
         tool_events = [item for item in self.session["history"] if item["role"] == "tool"]
@@ -1286,6 +1373,27 @@ def build_agent(args):
             security_corpus = None
     # ---
 
+    # --- Enhancement 5: load hook config (Part 4) ---
+    repo_root = Path(workspace.repo_root)
+    hooks_path = getattr(args, "hooks_file", None)
+    if hooks_path is None:
+        default_hooks = repo_root / ".mini-coding-agent" / "hooks.json"
+        if default_hooks.is_file():
+            hooks_path = str(default_hooks)
+    if hooks_path:
+        try:
+            hook_manager = HookManager.from_config(hooks_path, cwd=repo_root)
+            print(
+                f"[hooks] loaded {len(hook_manager.hooks)} hook(s) from {hooks_path}",
+                file=sys.stderr,
+            )
+        except Exception as exc:
+            print(f"[hooks] failed to load {hooks_path}: {exc}", file=sys.stderr)
+            hook_manager = HookManager(cwd=repo_root)
+    else:
+        hook_manager = HookManager(cwd=repo_root)
+    # ---
+
     if session_id:
         return MiniAgent.from_session(
             model_client=model,
@@ -1297,6 +1405,7 @@ def build_agent(args):
             max_new_tokens=args.max_new_tokens,
             ooda=ooda,
             security_corpus=security_corpus,
+            hooks=hook_manager,
         )
     return MiniAgent(
         model_client=model,
@@ -1307,6 +1416,7 @@ def build_agent(args):
         max_new_tokens=args.max_new_tokens,
         ooda=ooda,
         security_corpus=security_corpus,
+        hooks=hook_manager,
     )
 
 
@@ -1376,6 +1486,15 @@ def build_arg_parser():
         help=(
             "Path to a terminal-bench checkout. Required when --benchmark "
             "terminal-bench is set."
+        ),
+    )
+    parser.add_argument(
+        "--hooks-file",
+        default=None,
+        help=(
+            "Path to a hooks.json config. If unset, auto-loads "
+            "<cwd>/.mini-coding-agent/hooks.json when present. "
+            "See hooks/ for example configs (Part 4)."
         ),
     )
     return parser

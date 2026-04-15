@@ -21,7 +21,8 @@ mini-coding-agent = "mini_coding_agent:main"
 dev = [
   "pytest>=8.3.5",
   "ruff>=0.4.4",
+  "maturin>=1.7,<2.0",
 ]
 
 [tool.setuptools]
-py-modules = ["mini_coding_agent", "code_intel", "secure_tools", "ooda", "rules", "knowledge"]
+py-modules = ["mini_coding_agent", "code_intel", "secure_tools", "ooda", "rules", "knowledge", "hooks"]

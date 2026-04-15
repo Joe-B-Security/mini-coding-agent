@@ -1,0 +1,14 @@
+/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/deps/pyo3_build_config-c2c21ff5af3c5427.d: /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/lib.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/errors.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/impl_.rs /Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config-file.txt /Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config.txt
+
+/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/deps/libpyo3_build_config-c2c21ff5af3c5427.rlib: /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/lib.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/errors.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/impl_.rs /Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config-file.txt /Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config.txt
+
+/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/deps/libpyo3_build_config-c2c21ff5af3c5427.rmeta: /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/lib.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/errors.rs /Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/impl_.rs /Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config-file.txt /Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config.txt
+
+/Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/lib.rs:
+/Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/errors.rs:
+/Users/j/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.22.6/src/impl_.rs:
+/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config-file.txt:
+/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out/pyo3-build-config.txt:
+
+# env-dep:CARGO_PKG_VERSION=0.22.6
+# env-dep:OUT_DIR=/Users/j/coding-agent-harness/mini-coding-agent/rust_hook/target/release/build/pyo3-build-config-bbbf72a6d8b8f79a/out

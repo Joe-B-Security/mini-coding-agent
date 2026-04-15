@@ -1,0 +1,18 @@
+[
+  {
+    "event": "PreToolUse",
+    "match": {"tool": ["write_file", "patch_file"]},
+    "command": "./example_hooks/notify.sh",
+    "name": "notify-on-write"
+  },
+  {
+    "event": "PostToolUse",
+    "command": "./example_hooks/audit.sh",
+    "name": "audit-log"
+  },
+  {
+    "event": "PostToolUse",
+    "callable": "example_hooks.log_callable:check",
+    "name": "log-callable"
+  }
+]
