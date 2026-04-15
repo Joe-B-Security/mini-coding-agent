@@ -14,6 +14,9 @@ uv.lock
 build/
 dist/
 
+# Rust / Cargo build output
+rust_hook/target/
+
 # Test and lint caches
 .pytest_cache/
 .ruff_cache/
