@@ -231,7 +231,7 @@ def test_deny_beats_allow_and_ask(tmp_path):
 
 
 def test_first_deny_short_circuits(tmp_path):
-    # Second hook would write a sentinel file if reached — assert it isn't.
+    # Second hook would write a sentinel file if reached, assert it isn't.
     sentinel = tmp_path / "ran.txt"
     deny_script = tmp_path / "deny.sh"
     deny_script.write_text("#!/bin/sh\nexit 2\n", encoding="utf-8")

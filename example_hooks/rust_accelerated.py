@@ -4,12 +4,12 @@ Exposes two functions that match the hook framework's callable
 protocol (dict in, decision dict out):
 
     scan_regex(payload)
-        Routes to rust_hook.scan_regex — fused RegexSet scan
+        Routes to rust_hook.scan_regex, fused RegexSet scan
         against ~100 benign patterns compiled into the .dylib.
         Benchmarks the regex workload in Part 4.
 
     walk_ast(payload)
-        Routes to rust_hook.walk_ast — tree-sitter-bash parse
+        Routes to rust_hook.walk_ast, tree-sitter-bash parse
         plus a TreeCursor walk counting every node. Benchmarks
         the AST workload.
 
@@ -28,7 +28,7 @@ The rust_hook extension must be installed into the active venv first:
 
 If the extension is missing, importing this module raises
 ImportError and the hook framework fails closed (deny) the first
-time the hook fires — surfacing the missing build step loudly.
+time the hook fires, surfacing the missing build step loudly.
 """
 
 from __future__ import annotations
@@ -63,6 +63,28 @@ def walk_ast(payload: dict) -> dict:
     payload_json = json.dumps(payload, separators=(",", ":"))
     decision_json = rust_hook.walk_ast(payload_json)
     return _coerce(decision_json)
+
+
+def run_security_stack(payload: dict) -> dict:
+    """Run all four Part 4.5 classifiers via the Rust extension.
+
+    Direct counterpart to py_callable_security.run_security_stack so
+    the benchmark can compare the same workload across architectures.
+    """
+    tool_input = payload.get("tool_input") or {}
+    command = tool_input.get("command") or ""
+    path = tool_input.get("path") or ""
+    output = payload.get("tool_output") or ""
+
+    if command:
+        rust_hook.classify_command(command)
+        rust_hook.classify_exfil(command)
+    if path:
+        rust_hook.classify_path(path)
+    if output:
+        rust_hook.scan_secrets(output)
+
+    return {"decision": "allow"}
 
 
 def _coerce(decision_json: str) -> dict:

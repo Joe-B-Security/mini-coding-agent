@@ -2,7 +2,7 @@
 
 Thin wrapper around `py_subprocess_regex_scanner.scan_regex`. When
 the hook framework imports this module, the underlying subprocess
-module is imported too — which means the expensive one-time setup
+module is imported too, which means the expensive one-time setup
 runs exactly once at agent startup:
 
     - Python interpreter is already running (no fork/exec)
@@ -11,7 +11,7 @@ runs exactly once at agent startup:
     - SQLite audit connection opened        (paid once)
 
 Every subsequent hook call is a direct `scan_regex(payload)`
-function call — no import, no pattern compilation, no subprocess
+function call, no import, no pattern compilation, no subprocess
 spawn, and no audit write on the callable path (batched
 asynchronously in a real system, omitted here to isolate scan cost
 from audit cost). This is the "architectural win" row in the

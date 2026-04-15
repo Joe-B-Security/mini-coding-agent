@@ -22,8 +22,8 @@ actual work. A production subprocess hook has no way to amortize
 
 This file is paired with py_callable_ast_walker (in-process variant)
 and rust_hook::walk_ast (compiled variant). The three run identical
-logic — parse the same command, walk the same tree, count nodes by
-the same rule — with only the dispatch architecture varying.
+logic, parse the same command, walk the same tree, count nodes by
+the same rule, with only the dispatch architecture varying.
 
 Why tree-sitter as a second workload:
 Regex scanning is close to the best case for Python because CPython's
@@ -32,7 +32,7 @@ tree-sitter bindings expose every node through a Python object, and
 every `.children` / `.type` / `.kind` access crosses the CPython
 boundary. The scan loop runs in Python bytecode while the C extension
 sits there doing nothing between accesses. Rust's tree-sitter crate
-keeps the whole walk in compiled native code — the cursor moves down,
+keeps the whole walk in compiled native code, the cursor moves down,
 across, and up with no FFI in the hot loop. This is where the
 compilation win should be biggest.
 """
@@ -56,7 +56,7 @@ import tempfile
 import typing  # noqa: F401
 from pathlib import Path
 
-import tree_sitter  # noqa: F401 — core Parser / Tree / Node types
+import tree_sitter  # noqa: F401, core Parser / Tree / Node types
 import tree_sitter_languages  # grammar loader
 
 
@@ -67,7 +67,7 @@ import tree_sitter_languages  # grammar loader
 # and every subsequent hook invocation reuses the same parser.
 _BASH_PARSER = tree_sitter_languages.get_parser("bash")
 
-# Audit DB — same as py_subprocess_regex_scanner but with a different
+# Audit DB, same as py_subprocess_regex_scanner but with a different
 # table so the two scanners don't stomp on each other's rows.
 _AUDIT_PATH = Path(tempfile.gettempdir()) / "_mini_bench_audit.db"
 _AUDIT_CONN = sqlite3.connect(str(_AUDIT_PATH))
@@ -84,7 +84,7 @@ _AUDIT_CONN.commit()
 def walk_ast(payload: dict) -> dict:
     """Parse tool_input.command as bash, walk the tree, count nodes.
 
-    Pure work — no audit write. The subprocess path adds the audit
+    Pure work, no audit write. The subprocess path adds the audit
     write in main() via _audit_walk_decision so the in-process
     callable variant stays a fair comparison for the Rust row.
 

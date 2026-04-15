@@ -25,7 +25,7 @@ subsequent call. The Rust variant (example_hooks/rust_accelerated.py,
 backed by rust_hook/src/lib.rs) doesn't pay any of 1-4 because the
 patterns are compiled into the .dylib at build time.
 
-The pattern set is intentionally benign — words, numbers, URLs, log
+The pattern set is intentionally benign, words, numbers, URLs, log
 markers, HTTP status strings, common code idioms. The benchmark is
 measuring "how fast can we scan N patterns" not "is this a security
 tool." Keep the list in sync with `BENIGN_PATTERNS` in
@@ -38,21 +38,21 @@ from __future__ import annotations
 # milliseconds to subprocess startup because Python locates, reads,
 # and compiles the bytecode on every cold invocation. In-process
 # variants pay this cost exactly once at agent startup.
-import collections  # noqa: F401 — dataclass fallback, LRU cache
-import dataclasses  # noqa: F401 — hook verdict structs
-import functools  # noqa: F401 — memoization decorators
-import hashlib  # noqa: F401 — fingerprint tool_inputs for audit dedup
-import hmac  # noqa: F401 — audit record signing
-import importlib.util  # noqa: F401 — dynamic classifier loading
-import itertools  # noqa: F401 — pattern-set combinators
+import collections  # noqa: F401, dataclass fallback, LRU cache
+import dataclasses  # noqa: F401, hook verdict structs
+import functools  # noqa: F401, memoization decorators
+import hashlib  # noqa: F401, fingerprint tool_inputs for audit dedup
+import hmac  # noqa: F401, audit record signing
+import importlib.util  # noqa: F401, dynamic classifier loading
+import itertools  # noqa: F401, pattern-set combinators
 import json
-import logging  # noqa: F401 — structured hook logging
-import os  # noqa: F401 — env-based config
+import logging  # noqa: F401, structured hook logging
+import os  # noqa: F401, env-based config
 import re
 import sqlite3
 import sys
 import tempfile
-import typing  # noqa: F401 — type hints across hook modules
+import typing  # noqa: F401, type hints across hook modules
 from pathlib import Path
 
 
@@ -185,7 +185,7 @@ BENIGN_PATTERNS: tuple[str, ...] = (
 # Default flags (no MULTILINE) so that `^` and `$` anchors in these
 # patterns match only at string boundaries, matching the default
 # behaviour of Rust's regex crate. Enabling MULTILINE here would
-# make `^` match after every `\n` — extra work on the Python side
+# make `^` match after every `\n`, extra work on the Python side
 # that the Rust side doesn't do, breaking apples-to-apples.
 _COMPILED_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(p) for p in BENIGN_PATTERNS
@@ -209,7 +209,7 @@ _AUDIT_CONN.commit()
 
 
 def scan_regex(payload: dict) -> dict:
-    """Pure scan — no audit write.
+    """Pure scan, no audit write.
 
     The audit write lives on the subprocess path only (via
     _audit_scan_decision, called from main()). Moving it out of

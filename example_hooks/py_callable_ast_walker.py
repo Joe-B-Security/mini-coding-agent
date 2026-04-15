@@ -2,7 +2,7 @@
 
 Thin wrapper around `py_subprocess_ast_walker.walk_ast`. When the
 hook framework imports this module, the underlying subprocess module
-is imported too — which means the expensive one-time setup runs
+is imported too, which means the expensive one-time setup runs
 exactly once at agent startup:
 
     - Python interpreter is already running (no fork/exec)
@@ -13,7 +13,7 @@ exactly once at agent startup:
     - SQLite audit connection opened           (paid once)
 
 Every subsequent hook call is a direct `walk_ast(payload)`
-function call — parse the command, walk the tree, count nodes,
+function call, parse the command, walk the tree, count nodes,
 return the count. No subprocess spawn, no parser reconstruction,
 no audit write on the callable path.
 

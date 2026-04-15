@@ -1,0 +1,25 @@
+[
+  {
+    "event": "PreToolUse",
+    "match": {"tool": "run_shell"},
+    "callable": "example_hooks.security.command_hook:check",
+    "name": "security-command"
+  },
+  {
+    "event": "PreToolUse",
+    "match": {"tool": "run_shell"},
+    "callable": "example_hooks.security.network_hook:check",
+    "name": "security-network"
+  },
+  {
+    "event": "PreToolUse",
+    "match": {"tool": ["read_file", "write_file", "patch_file", "run_shell"]},
+    "callable": "example_hooks.security.path_hook:check",
+    "name": "security-path"
+  },
+  {
+    "event": "PostToolUse",
+    "callable": "example_hooks.security.secrets_hook:check",
+    "name": "security-secrets"
+  }
+]

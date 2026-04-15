@@ -1,6 +1,6 @@
 #!/bin/sh
 # Example PreToolUse hook: print a terminal notification before a risky
-# write lands on disk. Doesn't block anything — exits 0 (allow).
+# write lands on disk. Doesn't block anything; exits 0 (allow).
 #
 # Wiring:
 #   {"event": "PreToolUse", "match": {"tool": ["write_file", "patch_file"]},

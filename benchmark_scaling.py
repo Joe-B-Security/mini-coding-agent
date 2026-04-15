@@ -6,7 +6,7 @@ Python's per-call cost scale linearly while Rust stays nearly flat?"
 Methodology
 -----------
 - Fix the haystack. Same realistic ~1KB string for every row.
-- Generate a programmatic benign pattern list — patterns of the
+- Generate a programmatic benign pattern list, patterns of the
   form `\\btoken{N}\\b` for a range of N values. Uniform shape so
   there's no pattern-specific DFA optimization noise, and the
   same patterns run on both sides (Python `re` and Rust `regex::
@@ -74,7 +74,7 @@ HAYSTACK = (
 def generate_patterns(n: int) -> list[str]:
     """Return `n` benign regex patterns of uniform shape.
 
-    Pattern template: `\\btoken{i}\\b` — a word boundary, the literal
+    Pattern template: `\\btoken{i}\\b`, a word boundary, the literal
     'token', a distinct integer, another word boundary. Simple enough
     that both Python's `re` and Rust's `regex::RegexSet` compile them
     without any engine-specific quirks. Distinct enough that the
@@ -134,7 +134,7 @@ def main() -> int:
     iters = 20_000
     counts = [10, 50, 100, 500, 1000]
 
-    print(f"Scaling benchmark — iterations per row: {iters:,}")
+    print(f"Scaling benchmark, iterations per row: {iters:,}")
     print(f"Haystack bytes: {len(HAYSTACK)}")
     print(f"Pattern template: \\btoken<N>\\b (generated, benign)")
     print("-" * 90)
@@ -197,7 +197,7 @@ def main() -> int:
 
         print(
             "\n  Python grows linearly because `for p in compiled: p.search(h)`\n"
-            "  runs in Python bytecode — every added pattern adds one more\n"
+            "  runs in Python bytecode, every added pattern adds one more\n"
             "  iteration of the scan loop. Rust uses `regex::RegexSet` which\n"
             "  fuses all patterns into a single DFA; scan time is bounded by\n"
             "  haystack length, not pattern count. Adding the 1000th pattern\n"

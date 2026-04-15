@@ -3,8 +3,8 @@
 These hooks are the reference implementations the benchmark and
 scaling experiments use. The hook framework tests
 (tests/test_hooks.py) already cover HookManager mechanics, but if
-the example modules themselves break — a rename, a function
-signature change, a protocol drift — nothing else catches it
+the example modules themselves break, a rename, a function
+signature change, a protocol drift, nothing else catches it
 before the benchmark fails loudly at runtime. These tests exist
 to catch that class of regression at pytest time.
 
