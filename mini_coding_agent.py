@@ -22,6 +22,7 @@ from rules import build_engine
 
 # --- Enhancement 5: hook system ---
 from hooks import HookManager
+from sandbox import Sandbox, SandboxPolicy
 
 
 DOC_NAMES = ("AGENTS.md", "README.md", "pyproject.toml", "package.json")
@@ -313,6 +314,7 @@ class MiniAgent:
         ooda=True,
         security_corpus=None,
         hooks=None,
+        sandbox=None,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -356,6 +358,15 @@ class MiniAgent:
         # ---
         # --- Enhancement 5: hook system ---
         self.hooks = hooks or HookManager(cwd=self.root)
+        # ---
+        # --- Enhancement 6: OS sandbox for shell execution (Part 5) ---
+        self.sandbox = sandbox
+        if depth == 0 and sandbox is not None:
+            print(
+                f"[sandbox] run_shell wrapped in sandbox-exec "
+                f"(network={sandbox.policy.network})",
+                file=sys.stderr,
+            )
         # ---
         self.tools = self.build_tools()
         self.prefix = self.build_prefix()
@@ -1201,6 +1212,19 @@ class MiniAgent:
         timeout = int(args.get("timeout", 20))
         if timeout < 1 or timeout > 120:
             raise ValueError("timeout must be in [1, 120]")
+        # --- Enhancement 6: delegate to OS sandbox if configured ---
+        if self.sandbox is not None:
+            r = self.sandbox.run(command, cwd=self.root, timeout=timeout)
+            return textwrap.dedent(
+                f"""\
+                exit_code: {r.returncode}
+                stdout:
+                {r.stdout.strip() or "(empty)"}
+                stderr:
+                {r.stderr.strip() or "(empty)"}
+                """
+            ).strip()
+        # ---
         result = subprocess.run(
             command,
             cwd=self.root,
@@ -1394,6 +1418,18 @@ def build_agent(args):
         hook_manager = HookManager(cwd=repo_root)
     # ---
 
+    # --- Enhancement 6: OS sandbox for shell execution (Part 5) ---
+    sandbox_obj = None
+    if getattr(args, "sandbox", False):
+        net_mode = getattr(args, "sandbox_network", "loopback") or "loopback"
+        sandbox_obj = Sandbox(
+            SandboxPolicy(
+                network=net_mode,
+                cpu_s=getattr(args, "sandbox_cpu", 30),
+            )
+        )
+    # ---
+
     if session_id:
         return MiniAgent.from_session(
             model_client=model,
@@ -1406,6 +1442,7 @@ def build_agent(args):
             ooda=ooda,
             security_corpus=security_corpus,
             hooks=hook_manager,
+            sandbox=sandbox_obj,
         )
     return MiniAgent(
         model_client=model,
@@ -1417,6 +1454,7 @@ def build_agent(args):
         ooda=ooda,
         security_corpus=security_corpus,
         hooks=hook_manager,
+        sandbox=sandbox_obj,
     )
 
 
@@ -1496,6 +1534,34 @@ def build_arg_parser():
             "<cwd>/.mini-coding-agent/hooks.json when present. "
             "See hooks/ for example configs (Part 4)."
         ),
+    )
+    parser.add_argument(
+        "--sandbox",
+        action="store_true",
+        default=False,
+        help=(
+            "Run shell tool calls under macOS sandbox-exec with a "
+            "filesystem/network/cpu policy. Sensitive home paths are "
+            "denied and indirect execution (scripts the agent writes "
+            "and then runs) is caught at the syscall layer. macOS only. "
+            "(Part 5)"
+        ),
+    )
+    parser.add_argument(
+        "--sandbox-network",
+        choices=("none", "loopback", "allow"),
+        default="loopback",
+        help=(
+            "Network mode when --sandbox is set. 'loopback' keeps local "
+            "model endpoints reachable; 'none' blocks all outbound; "
+            "'allow' disables the network filter."
+        ),
+    )
+    parser.add_argument(
+        "--sandbox-cpu",
+        type=int,
+        default=30,
+        help="CPU-seconds cap per shell call when --sandbox is set (RLIMIT_CPU).",
     )
     return parser
 

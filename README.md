@@ -121,6 +121,16 @@ The four classifiers are wired as four callable hooks in `example_hooks/security
 
 The same `benchmark_hooks.py` adds a third workload row that runs the four classifiers on a representative payload and measures Python in-process vs Rust in-process: 9.4x compilation win (Python ~126 µs, Rust ~13 µs per call), security stack sub-millisecond and invisible relative to the cost of a tool call. A fourth workload row reports each Rust function individually: five of eight functions land under 1.3 µs, `extract_paths` at ~17 µs because tree-sitter parsing dominates. 67 new tests (42 classifier unit + 25 hook integration). Five live traces against `qwen/qwen3.5-9b` are captured in `archive/part4_5_traces/` showing each classifier firing through the full agent loop. See `archive/PART4_5_TECHNICAL.md` for the long form.
 
+### Part 5: OS-level sandbox for shell execution ([blog post](https://joe-b-security.github.io/posts/2026-04-24-improving-coding-agent-harness-part5/))
+
+Adds an OS-level sandbox around `run_shell` using macOS `sandbox-exec`. The hook layers from Parts 1.5, 4, and 4.5 inspect the shell string the agent produces; the sandbox inspects the syscalls the resulting process actually issues. Different category of check, composed at a different layer.
+
+The policy surface has three fields: `fs_deny` (sensitive paths denied at `file-read*` and `file-write*`, with `~/.ssh`, `~/.aws`, `~/.config/gh` baked in), `network` (`none` / `loopback` / `allow`, bounded by what SBPL natively expresses), and `cpu_s` (RLIMIT_CPU applied in the preexec child). The policy surface is deliberately small because the three categories are exactly the three things SBPL and `RLIMIT_CPU` can actually enforce on macOS; anything wider lives in the production discussion.
+
+The interesting shapes are the ones classifiers cannot reach no matter how many patterns they carry: an agent that writes a script to the workspace and then runs it (the classifier sees `python3 script.py`, the kernel sees the script's `open("/etc/master.passwd")`), and a raw `socket.connect` that never goes through a curl/wget/scp base command (the network classifier has no shape to match, the kernel refuses the syscall). Defense in depth emerges from the two layers composing through the existing hook merge.
+
+Implementation is `sandbox.py` (~125 lines) plus ~15 lines of wiring in `mini_coding_agent.py`. New CLI flags `--sandbox`, `--sandbox-network`, `--sandbox-cpu`. 22 new tests. The blog post walks through four live traces against `qwen/qwen3.5-9b` showing each category firing end to end.
+
 ### Run it
 
 ```bash
@@ -139,10 +149,12 @@ To load hooks from Part 4, add `--hooks-file example_hooks/hooks.json` or drop a
 
 To load the Part 4.5 security classifier bundle instead, use `--hooks-file example_hooks/security/hooks.json`. The same Rust extension covers both Part 4 and Part 4.5, so one `maturin develop --release` builds everything.
 
+To run shell calls under the Part 5 sandbox, add `--sandbox`. Default network mode is `loopback` so a local model endpoint stays reachable. Use `--sandbox-network none` for an air-gapped shell or `--sandbox-network allow` to disable the network filter. macOS only.
+
 ### Tests
 
 ```bash
-uv run python -m pytest tests/ -v   # 293 passing + 3 skipped (skipped tests require the Rust extension and the live embedding server), no model needed
+uv run python -m pytest tests/ -v   # 315 passing + 2 skipped (skipped tests require the Rust extension and the live embedding server), no model needed
 ```
 
 ---
