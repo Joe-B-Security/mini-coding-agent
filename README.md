@@ -12,6 +12,8 @@ The original agent has grep and line-range file reads. This fork adds tree-sitte
 - **[Part 3, Scoring 100% on Coding Benchmarks](https://joe-b-security.github.io/posts/2026-04-13-improving-coding-agent-harness-part3/)**
 - **[Part 4, Hooks](https://joe-b-security.github.io/posts/2026-04-15-improving-coding-agent-harness-part4/)**
 - **[Part 4.5, Security Hooks](https://joe-b-security.github.io/posts/2026-04-15-improving-coding-agent-harness-part4-5/)**
+- **[Part 5, Sandboxing](https://joe-b-security.github.io/posts/2026-04-28-improving-coding-agent-harness-part5/)**
+- **[Part 5.5, Secrets Sandboxing](https://joe-b-security.github.io/posts/2026-04-29-improving-coding-agent-harness-part5-5/)**
 
 ### Part 1: Code understanding tools ([blog post](https://joe-b-security.github.io/posts/2026-04-07-improving-coding-agent-harness-part1/))
 
@@ -131,6 +133,16 @@ The interesting shapes are the ones classifiers cannot reach no matter how many 
 
 Implementation is `sandbox.py` (~125 lines) plus ~15 lines of wiring in `mini_coding_agent.py`. New CLI flags `--sandbox`, `--sandbox-network`, `--sandbox-cpu`. 22 new tests. The blog post walks through four live traces against `qwen/qwen3.5-9b` showing each category firing end to end.
 
+### Part 5.5: Zero-knowledge secrets via a domain-bound broker ([blog post](https://joe-b-security.github.io/posts/2026-04-29-improving-coding-agent-harness-part5-5/))
+
+A secrets layer on top of the Part 5 sandbox. The agent gets a `vault_request` tool and writes HTTP requests the way each API expects them (a Bearer header, an `X-API-Key` header, a query parameter, a body field), but uses the literal placeholder `{{SECRET}}` wherever the credential should go. A localhost broker substitutes the placeholder with the cleartext value just before forwarding to the upstream. The model never sees the cleartext, and neither does the sandboxed subprocess that runs the request.
+
+The store is a `chmod 600` JSON file mapping `{NAME: {value, domain}}`. Each entry binds one credential to one upstream host, and the set of bound hosts is the egress allowlist: a `target` not on the list is refused. When `secret_name` is supplied, the harness checks that `target` matches the secret's bound domain before building the request, and the broker independently dials only that domain. Three independent layers (application check, kernel-level loopback, broker forward) all have to misfire for the secret to leak.
+
+The sandbox is what makes the broker non-bypassable. Without `--sandbox-network loopback`, the subprocess could reach the upstream directly and skip the broker, so the CLI refuses to start `--secrets-file` without `--sandbox` set to `loopback`.
+
+Implementation is `secrets_store.py` (~70 lines), `broker.py` (~230 lines), and ~90 lines of wiring in `mini_coding_agent.py`. One new CLI flag, `--secrets-file`. 24 new tests. The blog post walks through six live traces against `qwen/qwen3.5-9b`: header-placeholder happy path, query-string placeholder, unauthenticated call to an allowed target, target off the allowlist, direct curl bypass denied at the kernel, and cleartext echoed through `run_shell` redacted before it lands in history.
+
 ### Run it
 
 ```bash
@@ -151,10 +163,12 @@ To load the Part 4.5 security classifier bundle instead, use `--hooks-file examp
 
 To run shell calls under the Part 5 sandbox, add `--sandbox`. Default network mode is `loopback` so a local model endpoint stays reachable. Use `--sandbox-network none` for an air-gapped shell or `--sandbox-network allow` to disable the network filter. macOS only.
 
+To enable Part 5.5 zero-knowledge secrets, also pass `--secrets-file <path>` pointing at a `chmod 600` JSON file of the shape `{"NAME": {"value": "...", "domain": "api.example.com"}}`. The agent gets a `vault_request` tool. When the agent uses a credential, it writes `{{SECRET}}` wherever the credential should go (a header value, a query parameter, or a body field) and the broker substitutes it before forwarding. Requires `--sandbox` with `--sandbox-network loopback`; the harness refuses to start otherwise.
+
 ### Tests
 
 ```bash
-uv run python -m pytest tests/ -v   # 315 passing + 2 skipped (skipped tests require the Rust extension and the live embedding server), no model needed
+uv run python -m pytest tests/ -v   # 340 passing + 1 skipped (skipped test requires the Rust extension), no model needed
 ```
 
 ---

@@ -24,6 +24,10 @@ from rules import build_engine
 from hooks import HookManager
 from sandbox import Sandbox, SandboxPolicy
 
+# --- Enhancement 7: domain-bound secret broker (Part 5.5) ---
+from broker import Broker, SECRET_HEADER, TARGET_HEADER, TOKEN_HEADER
+from secrets_store import SecretsStore
+
 
 DOC_NAMES = ("AGENTS.md", "README.md", "pyproject.toml", "package.json")
 HELP_TEXT = "/help, /memory, /session, /reset, /exit"
@@ -62,6 +66,15 @@ IGNORED_PATH_NAMES = {".git", ".mini-coding-agent", "__pycache__", ".pytest_cach
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+# --- Enhancement 7: shell-safe quoting for vault_request curl args ---
+def _sh_quote(s: str) -> str:
+    if not s:
+        return "''"
+    if all(c.isalnum() or c in "@%+=:,./-_" for c in s):
+        return s
+    return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
 # Supporting helper for component 4 (context reduction and output management).
@@ -315,6 +328,8 @@ class MiniAgent:
         security_corpus=None,
         hooks=None,
         sandbox=None,
+        secrets_store=None,
+        broker=None,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -365,6 +380,17 @@ class MiniAgent:
             print(
                 f"[sandbox] run_shell wrapped in sandbox-exec "
                 f"(network={sandbox.policy.network})",
+                file=sys.stderr,
+            )
+        # ---
+        # --- Enhancement 7: domain-bound secret broker (Part 5.5) ---
+        self.secrets_store = secrets_store
+        self.broker = broker
+        if depth == 0 and secrets_store is not None:
+            names = ", ".join(secrets_store.names()) or "(none)"
+            print(
+                f"[vault] broker at {broker.url if broker else '(none)'} "
+                f"with {len(secrets_store.names())} secret(s): {names}",
                 file=sys.stderr,
             )
         # ---
@@ -474,6 +500,30 @@ class MiniAgent:
                 "run": self.tool_patch_file,
             },
         }
+        # --- Enhancement 7: vault_request tool (Part 5.5) ---
+        if self.secrets_store is not None and self.broker is not None:
+            tools["vault_request"] = {
+                "schema": {
+                    "target": "str",
+                    "secret_name": "str=''",
+                    "method": "str='GET'",
+                    "path": "str='/'",
+                    "headers": "dict={}",
+                    "body": "str=''",
+                },
+                "risky": False,
+                "description": (
+                    "Call an HTTP API. target must be an allowed domain "
+                    "(see manifest). If secret_name is set, target must "
+                    "match its binding, and any header/path/body containing "
+                    "the literal placeholder \"{{SECRET}}\" gets the "
+                    "credential injected by the broker. The value never "
+                    "enters your context, your args, or the sandboxed "
+                    "subprocess."
+                ),
+                "run": self.tool_vault_request,
+            }
+        # ---
         # --- Enhancement 3: remember tool ---
         if self.ooda:
             tools["remember"] = {
@@ -495,6 +545,46 @@ class MiniAgent:
     ############################################
     #### 2) Prompt Shape And Cache Reuse #######
     ############################################
+    # --- Enhancement 7: secrets manifest in system prompt (Part 5.5) ---
+    def secrets_manifest_text(self):
+        if self.secrets_store is None:
+            return ""
+        entries = self.secrets_store.entries()
+        if not entries:
+            return ""
+        lines = [f"  {s.name:12s} -> {s.domain}" for s in entries]
+        return textwrap.dedent(
+            """\
+
+            HTTP requests go through vault_request only. Direct curl/wget to
+            the hosts below is denied by the sandbox.
+
+            Available targets and credentials:
+            {table}
+
+            CRITICAL rule when secret_name is set:
+              You MUST also pass headers (or path/body) containing the literal
+              placeholder "{{{{SECRET}}}}". The harness substitutes that
+              placeholder with the credential value at the broker. If you set
+              secret_name without a placeholder anywhere, the call FAILS.
+
+            Most APIs use:
+              "headers": {{ "Authorization": "Bearer {{{{SECRET}}}}" }}
+
+            Some APIs (older / vendor-specific) use a different slot:
+              "headers": {{ "X-API-Key": "{{{{SECRET}}}}" }}
+              "path"   : "/v1/x?api_key={{{{SECRET}}}}"
+              "body"   : "{{\\"key\\":\\"{{{{SECRET}}}}\\"}}"
+
+            Pick the slot that matches the API. The token value never enters
+            your context, your tool args, or the sandbox subprocess.
+
+            For unauthenticated endpoints on an allowed target, omit
+            secret_name entirely.
+            """
+        ).strip().format(table="\n".join(lines))
+    # ---
+
     def build_prefix(self):
         tool_lines = []
         for name, tool in self.tools.items():
@@ -502,21 +592,41 @@ class MiniAgent:
             risk = "approval required" if tool["risky"] else "safe"
             tool_lines.append(f"- {name}({fields}) [{risk}] {tool['description']}")
         tool_text = "\n".join(tool_lines)
-        examples = "\n".join(
-            [
-                '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
-                '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
-                '<tool>{"name":"find_defs","args":{"symbol":"Config","path":"."}}</tool>',
-                '<tool>{"name":"find_refs","args":{"symbol":"Config","path":"."}}</tool>',
-                '<tool>{"name":"file_outline","args":{"path":"app.py"}}</tool>',
-                '<tool>{"name":"read_symbol","args":{"path":"app.py","symbol":"main"}}</tool>',
-                '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
-                '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
-                '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
-                "<final>Done.</final>",
-            ]
-        )
-        return textwrap.dedent(
+        example_lines = [
+            '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
+            '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
+            '<tool>{"name":"find_defs","args":{"symbol":"Config","path":"."}}</tool>',
+            '<tool>{"name":"find_refs","args":{"symbol":"Config","path":"."}}</tool>',
+            '<tool>{"name":"file_outline","args":{"path":"app.py"}}</tool>',
+            '<tool>{"name":"read_symbol","args":{"path":"app.py","symbol":"main"}}</tool>',
+            '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
+            '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
+            '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
+        ]
+        if "vault_request" in self.tools:
+            first = self.secrets_store.entries()[0]
+            example_lines.append(
+                '<tool>{"name":"vault_request","args":{"target":"'
+                + first.domain
+                + '","secret_name":"'
+                + first.name
+                + '","method":"GET","path":"/anything","headers":{"Authorization":"Bearer {{SECRET}}"}}}</tool>'
+            )
+            example_lines.append(
+                '<tool>{"name":"vault_request","args":{"target":"'
+                + first.domain
+                + '","secret_name":"'
+                + first.name
+                + '","method":"GET","path":"/get?api_key={{SECRET}}"}}</tool>'
+            )
+            example_lines.append(
+                '<tool>{"name":"vault_request","args":{"target":"'
+                + first.domain
+                + '","method":"GET","path":"/headers"}}</tool>'
+            )
+        example_lines.append("<final>Done.</final>")
+        examples = "\n".join(example_lines)
+        base = textwrap.dedent(
             f"""\
             You are Mini-Coding-Agent, a small local coding agent running through Ollama.
 
@@ -550,6 +660,10 @@ class MiniAgent:
             {self.workspace.text()}
             """
         ).strip()
+        secrets_block = self.secrets_manifest_text()
+        if secrets_block:
+            return base + "\n\n" + secrets_block
+        return base
 
     def memory_text(self):
         memory = self.session["memory"]
@@ -849,6 +963,7 @@ class MiniAgent:
             "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
             "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
             "remember": '<tool>{"name":"remember","args":{"key":"test_cmd","content":"pytest --no-header -q","scope":"workspace"}}</tool>',
+            "vault_request": '<tool>{"name":"vault_request","args":{"target":"api.github.com","secret_name":"GH_TOKEN","method":"GET","path":"/user","headers":{"Authorization":"Bearer {{SECRET}}"}}}</tool>',
             "delegate": '<tool>{"name":"delegate","args":{"task":"inspect README.md","max_steps":3}}</tool>',
         }
         return examples.get(name, "")
@@ -1215,13 +1330,17 @@ class MiniAgent:
         # --- Enhancement 6: delegate to OS sandbox if configured ---
         if self.sandbox is not None:
             r = self.sandbox.run(command, cwd=self.root, timeout=timeout)
+            stdout, stderr = r.stdout, r.stderr
+            if self.secrets_store is not None:
+                stdout = self.secrets_store.redact(stdout)
+                stderr = self.secrets_store.redact(stderr)
             return textwrap.dedent(
                 f"""\
                 exit_code: {r.returncode}
                 stdout:
-                {r.stdout.strip() or "(empty)"}
+                {stdout.strip() or "(empty)"}
                 stderr:
-                {r.stderr.strip() or "(empty)"}
+                {stderr.strip() or "(empty)"}
                 """
             ).strip()
         # ---
@@ -1233,15 +1352,89 @@ class MiniAgent:
             text=True,
             timeout=timeout,
         )
+        stdout, stderr = result.stdout, result.stderr
+        if self.secrets_store is not None:
+            stdout = self.secrets_store.redact(stdout)
+            stderr = self.secrets_store.redact(stderr)
         return textwrap.dedent(
             f"""\
             exit_code: {result.returncode}
             stdout:
-            {result.stdout.strip() or "(empty)"}
+            {stdout.strip() or "(empty)"}
             stderr:
-            {result.stderr.strip() or "(empty)"}
+            {stderr.strip() or "(empty)"}
             """
         ).strip()
+
+    # --- Enhancement 7: vault_request tool (Part 5.5) ---
+    def tool_vault_request(self, args):
+        if self.secrets_store is None or self.broker is None:
+            raise ValueError("vault_request requires --secrets-file (and --sandbox)")
+        if self.sandbox is None:
+            raise ValueError("vault_request requires --sandbox to enforce egress containment")
+
+        target = str(args.get("target", "")).strip()
+        if not target:
+            raise ValueError("target must not be empty")
+        allowed = self.secrets_store.domains()
+        if target not in allowed:
+            raise ValueError(
+                f"target {target!r} not in any binding; "
+                f"allowed: {sorted(allowed)}"
+            )
+
+        secret_name = str(args.get("secret_name", "")).strip()
+        if secret_name:
+            secret = self.secrets_store.get(secret_name)
+            if secret is None:
+                raise ValueError(f"unknown secret: {secret_name!r}")
+            if secret.domain != target:
+                raise ValueError(
+                    f"secret {secret_name!r} is bound to {secret.domain!r}, "
+                    f"refusing target={target!r}"
+                )
+
+        method = str(args.get("method", "GET")).strip().upper()
+        if method not in ("GET", "POST", "PUT", "DELETE"):
+            raise ValueError(f"unsupported method: {method!r}")
+        path = str(args.get("path", "/")).strip() or "/"
+        if not path.startswith("/"):
+            path = "/" + path
+        body = str(args.get("body", "") or "")
+        headers = args.get("headers") or {}
+        if not isinstance(headers, dict):
+            raise ValueError("headers must be a dict")
+
+        cmd = [
+            "curl", "-sS", "-g", "-X", method,
+            "-H", f"{TOKEN_HEADER}: {self.broker.token}",
+            "-H", f"{TARGET_HEADER}: {target}",
+        ]
+        if secret_name:
+            cmd += ["-H", f"{SECRET_HEADER}: {secret_name}"]
+        for hk, hv in headers.items():
+            cmd += ["-H", f"{hk}: {hv}"]
+        cmd += ["-w", "\\n[http_code: %{http_code}]\\n"]
+        if body:
+            cmd += ["--data-binary", "@-"]
+        cmd += [self.broker.url + path]
+
+        shell_cmd = " ".join(_sh_quote(p) for p in cmd)
+        if body:
+            shell_cmd = f"printf %s {_sh_quote(body)} | {shell_cmd}"
+
+        r = self.sandbox.run(shell_cmd, cwd=self.root, timeout=20)
+        out = r.stdout.strip() or "(empty)"
+        out = self.secrets_store.redact(out)
+        return textwrap.dedent(
+            f"""\
+            exit_code: {r.returncode}
+            upstream: {target}{" (auth: " + secret_name + ")" if secret_name else " (no auth)"}
+            response:
+            {out}
+            """
+        ).strip()
+    # ---
 
     def tool_write_file(self, args):
         path = self.path(args["path"])
@@ -1429,6 +1622,25 @@ def build_agent(args):
             )
         )
     # ---
+    # --- Enhancement 7: secret store + broker (Part 5.5) ---
+    secrets_store_obj = None
+    broker_obj = None
+    if getattr(args, "secrets_file", None):
+        if not getattr(args, "sandbox", False):
+            raise SystemExit(
+                "--secrets-file requires --sandbox. The broker is only "
+                "non-bypassable when sandbox network egress is restricted "
+                "to loopback."
+            )
+        if getattr(args, "sandbox_network", "loopback") != "loopback":
+            raise SystemExit(
+                "--secrets-file requires --sandbox-network loopback. "
+                "Any other mode lets the subprocess bypass the broker."
+            )
+        secrets_store_obj = SecretsStore.load(args.secrets_file)
+        broker_obj = Broker(secrets_store_obj)
+        broker_obj.__enter__()
+    # ---
 
     if session_id:
         return MiniAgent.from_session(
@@ -1443,6 +1655,8 @@ def build_agent(args):
             security_corpus=security_corpus,
             hooks=hook_manager,
             sandbox=sandbox_obj,
+            secrets_store=secrets_store_obj,
+            broker=broker_obj,
         )
     return MiniAgent(
         model_client=model,
@@ -1455,6 +1669,8 @@ def build_agent(args):
         security_corpus=security_corpus,
         hooks=hook_manager,
         sandbox=sandbox_obj,
+        secrets_store=secrets_store_obj,
+        broker=broker_obj,
     )
 
 
@@ -1562,6 +1778,17 @@ def build_arg_parser():
         type=int,
         default=30,
         help="CPU-seconds cap per shell call when --sandbox is set (RLIMIT_CPU).",
+    )
+    parser.add_argument(
+        "--secrets-file",
+        default=None,
+        help=(
+            "Path to a JSON secret store ({name: {value, domain}}). Enables "
+            "the vault_request tool. Each secret is bound to one upstream "
+            "domain; the broker injects the value at the network boundary "
+            "and refuses any other destination. Requires --sandbox with "
+            "--sandbox-network loopback. (Part 5.5)"
+        ),
     )
     return parser
 
